@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { writeAuditLogs, walrusExplorerUrl, AuditLogEntry } from '@/lib/walrus';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', bgCardHover: '#111B2E',
@@ -50,54 +51,31 @@ function Pill({ status }: { status: string }) {
 
 function EscalationModal({ tx, onApprove, onDeny }: { tx: TxItem; onApprove: () => void; onDeny: () => void }) {
   const [done, setDone] = useState(false);
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,12,20,0.92)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}>
       <div style={{ background: T.bgCard, border: `1px solid ${T.goldBorder}`, borderRadius: 20, padding: 'clamp(20px, 4vw, 28px)', maxWidth: 380, width: '100%' }}>
         <Tag label="APPROVAL REQUIRED" color={T.gold} />
-        <h2 style={{ fontFamily: 'DM Mono, monospace', fontSize: 16, color: T.white, fontWeight: 700, margin: '14px 0 6px' }}>
-          Transaction exceeds threshold
-        </h2>
-        <p style={{ fontSize: 12, color: T.grey2, margin: '0 0 20px', fontFamily: 'Inter, sans-serif' }}>
-          This transaction requires your explicit approval before execution.
-        </p>
-
-        {/* Details */}
+        <h2 style={{ fontFamily: 'DM Mono, monospace', fontSize: 16, color: T.white, fontWeight: 700, margin: '14px 0 6px' }}>Transaction exceeds threshold</h2>
+        <p style={{ fontSize: 12, color: T.grey2, margin: '0 0 20px', fontFamily: 'Inter, sans-serif' }}>This transaction requires your explicit approval before execution.</p>
         <div style={{ background: T.bg, borderRadius: 12, padding: 16, marginBottom: 16, border: `1px solid ${T.border}` }}>
-          {[
-            ['Merchant', tx.merchant, T.white],
-            ['Amount', `$${tx.amount.toFixed(2)}`, T.gold],
-            ['Policy limit', '$100.00', T.grey1],
-            ['Action', 'Manual approval required', T.grey1],
-          ].map(([k, v, c]) => (
+          {[['Merchant', tx.merchant, T.white], ['Amount', `$${tx.amount.toFixed(2)}`, T.gold], ['Policy limit', '$100.00', T.grey1], ['Action', 'Manual approval required', T.grey1]].map(([k, v, c]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 13 }}>
               <span style={{ color: T.grey2, fontFamily: 'Inter, sans-serif' }}>{k}</span>
               <span style={{ color: c as string, fontFamily: k === 'Amount' ? 'DM Mono, monospace' : 'Inter, sans-serif', fontWeight: k === 'Amount' ? 700 : 400, fontSize: k === 'Amount' ? 17 : 13 }}>{v}</span>
             </div>
           ))}
         </div>
-
-        {/* Biometric hint */}
         <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 18 }}>
-          <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>
-            production: Face ID / biometric confirmation triggers here
-          </span>
+          <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>production: Face ID / biometric confirmation triggers here</span>
         </div>
-
         <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={onDeny}
-            style={{ flex: 1, padding: 13, borderRadius: 10, border: `1px solid ${T.border}`, background: 'transparent', color: T.grey1, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'Inter, sans-serif', transition: 'all 0.2s' }}
+          <button onClick={onDeny} style={{ flex: 1, padding: 13, borderRadius: 10, border: `1px solid ${T.border}`, background: 'transparent', color: T.grey1, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'Inter, sans-serif', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.background = T.redDim; e.currentTarget.style.borderColor = T.red; e.currentTarget.style.color = T.red; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}
-          >
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}>
             Deny
           </button>
-          <button
-            onClick={async () => { setDone(true); await new Promise(r => setTimeout(r, 500)); onApprove(); }}
-            disabled={done}
-            style={{ flex: 2, padding: 13, borderRadius: 10, border: 'none', background: done ? T.teal : T.gold, color: T.bg, cursor: done ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'Inter, sans-serif', transition: 'background 0.3s' }}
-          >
+          <button onClick={async () => { setDone(true); await new Promise(r => setTimeout(r, 500)); onApprove(); }} disabled={done}
+            style={{ flex: 2, padding: 13, borderRadius: 10, border: 'none', background: done ? T.teal : T.gold, color: T.bg, cursor: done ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'Inter, sans-serif', transition: 'background 0.3s' }}>
             {done ? '✓ Approved' : 'Approve Transaction'}
           </button>
         </div>
@@ -106,34 +84,24 @@ function EscalationModal({ tx, onApprove, onDeny }: { tx: TxItem; onApprove: () 
   );
 }
 
-function TxRow({ tx, processing }: { tx: TxItem; processing: boolean }) {
+function TxRow({ tx }: { tx: TxItem }) {
   const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(t);
-  }, []);
-
+  useEffect(() => { const t = setTimeout(() => setMounted(true), 50); return () => clearTimeout(t); }, []);
   const dotColor = { approved: T.teal, blocked: T.red, escalated: T.gold }[tx.status] || T.blue;
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: `1px solid ${T.border}`, opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(8px)', transition: 'all 0.35s ease-out' }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: processing ? T.blue : dotColor, boxShadow: `0 0 ${processing ? 8 : 5}px ${processing ? T.blue : dotColor}`, flexShrink: 0, display: 'inline-block', animation: processing ? 'pulse 0.8s ease-in-out infinite' : 'none' }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: `0 0 5px ${dotColor}`, flexShrink: 0, display: 'inline-block' }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
           <span style={{ fontSize: 14, color: T.white, fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>{tx.merchant}</span>
           <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: T.white, fontWeight: 600 }}>${tx.amount.toFixed(2)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, flexWrap: 'wrap', gap: 4 }}>
-          <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>
-            {processing ? 'validating against EdgePass policy...' : tx.note}
-          </span>
-          {!processing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {tx.digest && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2 }}>{tx.digest}</span>}
-              <Pill status={tx.status} />
-            </div>
-          )}
+          <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>{tx.note}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {tx.digest && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2 }}>{tx.digest}</span>}
+            <Pill status={tx.status} />
+          </div>
         </div>
       </div>
     </div>
@@ -149,6 +117,8 @@ export default function Activity() {
   const [modal, setModal] = useState<TxItem | null>(null);
   const [done, setDone] = useState(false);
   const [autoMode, setAutoMode] = useState(false);
+  const [walrusBlobId, setWalrusBlobId] = useState<string | null>(null);
+  const [walrusLoading, setWalrusLoading] = useState(false);
   const ref = useRef(false);
   const autoRef = useRef(false);
 
@@ -156,6 +126,27 @@ export default function Activity() {
   const spent = shown.filter(t => t.status === 'approved').reduce((s, t) => s + t.amount, 0);
   const pct = Math.min((spent / budget) * 100, 100);
   const barColor = pct > 80 ? T.red : pct > 55 ? T.gold : T.teal;
+
+  // Write to Walrus when simulation completes
+  useEffect(() => {
+    if (!done || shown.length === 0 || walrusBlobId) return;
+    const flush = async () => {
+      setWalrusLoading(true);
+      const entries: AuditLogEntry[] = shown.map(tx => ({
+        passId: '0x4e2f...8b91',
+        merchant: tx.merchant,
+        amount: tx.amount,
+        status: tx.status as 'approved' | 'blocked' | 'escalated',
+        timestamp: Date.now(),
+        owner: localStorage.getItem('edge_sui_address') || '0x...',
+        digest: tx.digest || undefined,
+      }));
+      const blobId = await writeAuditLogs(entries, '0x4e2f...8b91');
+      setWalrusBlobId(blobId);
+      setWalrusLoading(false);
+    };
+    flush();
+  }, [done]);
 
   const processOne = async (currentIdx: number) => {
     if (ref.current) return;
@@ -165,7 +156,6 @@ export default function Activity() {
     setProcessing(tx.id);
     await new Promise(r => setTimeout(r, 1200));
     setProcessing(null);
-
     if (tx.status === 'escalated') {
       setModal(tx);
       autoRef.current = false;
@@ -181,13 +171,7 @@ export default function Activity() {
   };
 
   const next = () => { if (!ref.current && idx < TRANSACTIONS.length && !done) processOne(idx); };
-
-  const runAll = () => {
-    if (ref.current || done) return;
-    autoRef.current = true;
-    setAutoMode(true);
-    processOne(idx);
-  };
+  const runAll = () => { if (ref.current || done) return; autoRef.current = true; setAutoMode(true); processOne(idx); };
 
   const approve = () => {
     setModal(null);
@@ -208,47 +192,29 @@ export default function Activity() {
   };
 
   const reset = () => {
-    setShown([]);
-    setIdx(0);
-    setRunning(false);
-    setDone(false);
-    setAutoMode(false);
-    setModal(null);
-    setProcessing(null);
-    ref.current = false;
-    autoRef.current = false;
+    setShown([]); setIdx(0); setRunning(false); setDone(false);
+    setAutoMode(false); setModal(null); setProcessing(null);
+    setWalrusBlobId(null); setWalrusLoading(false);
+    ref.current = false; autoRef.current = false;
   };
 
   return (
     <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-      `}</style>
-
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
       {modal && <EscalationModal tx={modal} onApprove={approve} onDeny={deny} />}
 
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
-
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 8, padding: 0, display: 'block' }}
-            >
-              ← back
-            </button>
+            <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 8, padding: 0, display: 'block' }}>← back</button>
             <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: 0 }}>Activity</h1>
             <p style={{ color: T.grey2, fontSize: 13, margin: '4px 0 0', fontFamily: 'Inter, sans-serif' }}>Festival Mode · autonomous execution simulation</p>
           </div>
           {done && (
-            <button
-              onClick={reset}
-              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 14px', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', transition: 'all 0.2s' }}
+            <button onClick={reset} style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 14px', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.color = T.teal; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey2; }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey2; }}>
               ↺ reset
             </button>
           )}
@@ -258,9 +224,7 @@ export default function Activity() {
         <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 4 }}>
             <span style={{ fontSize: 11, color: T.grey2, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Budget</span>
-            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.white }}>
-              ${spent.toFixed(2)} <span style={{ color: T.grey2 }}>/ ${budget}.00</span>
-            </span>
+            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.white }}>${spent.toFixed(2)} <span style={{ color: T.grey2 }}>/ ${budget}.00</span></span>
           </div>
           <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', background: barColor, borderRadius: 2, width: `${pct}%`, transition: 'width 0.6s ease-out, background 0.4s' }} />
@@ -287,18 +251,14 @@ export default function Activity() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Transaction Log</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {running && (
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />
-              )}
+              {running && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
               <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{shown.length}/{TRANSACTIONS.length}</span>
             </div>
           </div>
 
           {shown.length === 0 && !running && processing === null && (
             <div style={{ padding: '28px 0', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>
-                awaiting execution_
-              </div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>awaiting execution_</div>
             </div>
           )}
 
@@ -308,56 +268,69 @@ export default function Activity() {
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.blue, boxShadow: `0 0 8px ${T.blue}`, flexShrink: 0, display: 'inline-block', animation: 'pulse 0.8s ease-in-out infinite' }} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 14, color: T.white, fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>
-                    {TRANSACTIONS.find(t => t.id === processing)?.merchant}
-                  </span>
-                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: T.white, fontWeight: 600 }}>
-                    ${TRANSACTIONS.find(t => t.id === processing)?.amount.toFixed(2)}
-                  </span>
+                  <span style={{ fontSize: 14, color: T.white, fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>{TRANSACTIONS.find(t => t.id === processing)?.merchant}</span>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: T.white, fontWeight: 600 }}>${TRANSACTIONS.find(t => t.id === processing)?.amount.toFixed(2)}</span>
                 </div>
-                <span style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace' }}>
-                  validating against EdgePass policy...
-                </span>
+                <span style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace' }}>validating against EdgePass policy...</span>
               </div>
             </div>
           )}
 
-          {shown.map(tx => <TxRow key={tx.id} tx={tx} processing={false} />)}
+          {shown.map(tx => <TxRow key={tx.id} tx={tx} />)}
         </div>
 
         {/* Controls */}
         {!done ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <button
-              onClick={next}
-              disabled={running || !!modal}
+            <button onClick={next} disabled={running || !!modal}
               style={{ padding: 13, borderRadius: 12, border: `1px solid ${running ? T.border : T.borderHover}`, background: 'transparent', color: running ? T.grey2 : T.grey1, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', transition: 'all 0.2s', fontFamily: 'DM Mono, monospace' }}
               onMouseEnter={e => { if (!running) { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.color = T.blue; } }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = running ? T.border : T.borderHover; e.currentTarget.style.color = running ? T.grey2 : T.grey1; }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.borderColor = running ? T.border : T.borderHover; e.currentTarget.style.color = running ? T.grey2 : T.grey1; }}>
               {running ? '$ processing...' : `$ next (${idx + 1}/${TRANSACTIONS.length})`}
             </button>
-            <button
-              onClick={runAll}
-              disabled={running || autoMode || !!modal}
-              style={{ padding: 13, borderRadius: 12, border: 'none', background: running || autoMode ? T.bgCard : T.blue, color: running || autoMode ? T.grey2 : T.white, fontSize: 13, fontWeight: 700, cursor: running || autoMode ? 'default' : 'pointer', transition: 'all 0.2s', fontFamily: 'Inter, sans-serif', border: `1px solid ${running || autoMode ? T.border : 'transparent'}` as any }}
-            >
+            <button onClick={runAll} disabled={running || autoMode || !!modal}
+              style={{ padding: 13, borderRadius: 12, border: `1px solid ${running || autoMode ? T.border : 'transparent'}`, background: running || autoMode ? T.bgCard : T.blue, color: running || autoMode ? T.grey2 : T.white, fontSize: 13, fontWeight: 700, cursor: running || autoMode ? 'default' : 'pointer', transition: 'all 0.2s', fontFamily: 'Inter, sans-serif' }}>
               {autoMode ? '$ running all...' : 'Run all →'}
             </button>
           </div>
         ) : (
-          <div style={{ padding: 16, borderRadius: 12, background: T.tealDim, border: `1px solid ${T.tealBorder}`, textAlign: 'center', animation: 'fadeUp 0.4s ease-out' }}>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.teal, fontWeight: 700, marginBottom: 4 }}>
-              ✓ simulation complete
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeUp 0.4s ease-out' }}>
+            {/* Completion card */}
+            <div style={{ padding: 16, borderRadius: 12, background: T.tealDim, border: `1px solid ${T.tealBorder}`, textAlign: 'center' }}>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.teal, fontWeight: 700, marginBottom: 4 }}>✓ simulation complete</div>
+              <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
+                {shown.filter(t => t.status === 'approved').length} approved · {shown.filter(t => t.status === 'blocked').length} blocked · 0 wallet popups
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
-              {shown.filter(t => t.status === 'approved').length} approved · {shown.filter(t => t.status === 'blocked').length} blocked · 0 wallet popups
+
+            {/* Walrus audit log */}
+            <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Walrus Audit Log</span>
+                {walrusLoading && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
+              </div>
+              {walrusLoading && (
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>$ writing audit log to Walrus...</div>
+              )}
+              {walrusBlobId && (
+                <div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
+                  <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
+                    → view on Walrus explorer ↗
+                  </a>
+                </div>
+              )}
+              {!walrusLoading && !walrusBlobId && (
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>audit log pending...</div>
+              )}
             </div>
           </div>
         )}
 
         <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, marginTop: 12, fontFamily: 'DM Mono, monospace' }}>
-          zero wallet interruptions · gas sponsored · fully auditable on Sui
+          zero wallet interruptions · gas sponsored · audit logs on Walrus
         </p>
       </div>
     </main>
