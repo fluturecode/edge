@@ -6,10 +6,27 @@ export const NETWORK_URLS: Record<string, string> = {
   devnet: "https://fullnode.devnet.sui.io",
 };
 
-export const EDGE_PACKAGE_ID = {
-  mainnet: "", // filled after mainnet deploy
-  testnet: "", // filled after testnet deploy
-  devnet: "",  // filled after devnet deploy
+// Fill these in after deploying the Move contract
+export const EDGE_PACKAGE_ID: Record<string, string> = {
+  mainnet: "",
+  testnet: "",
+  devnet: "",
 };
 
-export const DEFAULT_GAS_BUDGET = BigInt(10_000_000); // 0.01 SUI
+export const DEFAULT_GAS_BUDGET = BigInt(10_000_000);
+
+// Festival Mode demo constants
+export const FESTIVAL_MERCHANTS = [
+  "Shuttle Express",
+  "Festival Kitchen", 
+  "Hydra Bar",
+  "Stage Access VIP",
+  "Official Merch",
+];
+
+export const FESTIVAL_CONFIG = {
+  budget: BigInt(300) * MIST_PER_SUI,
+  autoThreshold: BigInt(50) * MIST_PER_SUI,
+  escalateThreshold: BigInt(100) * MIST_PER_SUI,
+  expiryMs: 48 * 60 * 60 * 1000,
+};
