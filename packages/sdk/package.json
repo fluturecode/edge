@@ -1,0 +1,28 @@
+{
+  "name": "@edge-protocol/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Trust delegation primitive for autonomous onchain systems on Sui",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "sui",
+    "zklogin",
+    "autonomous",
+    "trust",
+    "delegation"
+  ],
+  "author": "fluturecode",
+  "license": "MIT",
+  "dependencies": {
+    "@mysten/sui": "1.30.0",
+    "@mysten/zklogin": "^0.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
