@@ -44,6 +44,10 @@ budget: $300  ·  auto-approve: < $50  ·  escalate: > $100  ·  merchants: [...
 
 ```bash
 npm install @edge-protocol/sdk
+# or
+yarn add @edge-protocol/sdk
+# or
+pnpm add @edge-protocol/sdk
 ```
 
 ```typescript
