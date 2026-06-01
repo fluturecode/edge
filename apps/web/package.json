@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@edge-protocol/sdk": "workspace:*",
+    "@mysten/seal": "^1.1.3",
     "@mysten/sui": "^2.17.0",
     "@mysten/walrus": "^1.1.7",
     "@mysten/zklogin": "^0.8.1",
