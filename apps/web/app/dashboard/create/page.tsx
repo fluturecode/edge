@@ -160,13 +160,25 @@ export default function CreatePass() {
           <button
             onClick={handleCreate}
             disabled={state !== 'idle'}
-            style={{ width: '100%', padding: 14, border: 'none', borderRadius: 12, background: state === 'done' ? T.teal : state !== 'idle' ? T.bgCard : T.blue, color: state === 'done' ? T.bg : state !== 'idle' ? T.grey2 : T.white, fontSize: 14, fontWeight: 700, cursor: state !== 'idle' ? 'default' : 'pointer', transition: 'all 0.4s', fontFamily: 'Inter, sans-serif', border: `1px solid ${state !== 'idle' ? T.border : 'transparent'}` as any }}
+            style={{
+              width: '100%',
+              padding: 14,
+              borderRadius: 12,
+              border: `1px solid ${state !== 'idle' ? T.border : 'transparent'}`,
+              background: state === 'done' ? T.teal : state !== 'idle' ? T.bgCard : T.blue,
+              color: state === 'done' ? T.bg : state !== 'idle' ? T.grey2 : T.white,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: state !== 'idle' ? 'default' : 'pointer',
+              transition: 'all 0.4s',
+              fontFamily: 'Inter, sans-serif',
+            }}
           >
-            {state === 'idle' && 'Create EdgePass on Sui'}
-            {state === 'signing' && '$ signing with zkLogin...'}
-            {state === 'deploying' && '$ deploying Move object...'}
-            {state === 'done' && '✓ EdgePass minted on-chain'}
-          </button>
+  {state === 'idle' && 'Create EdgePass on Sui'}
+  {state === 'signing' && '$ signing with zkLogin...'}
+  {state === 'deploying' && '$ deploying Move object...'}
+  {state === 'done' && '✓ EdgePass minted on-chain'}
+</button>
 
           <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, margin: 0, fontFamily: 'DM Mono, monospace' }}>
             gas sponsored by Enoki · no SUI required · PTB atomic execution
