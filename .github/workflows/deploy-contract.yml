@@ -39,9 +39,8 @@ jobs:
         run: |
           sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
           sui client switch --env ${{ github.event.inputs.network }}
-          echo "${{ secrets.SUI_PRIVATE_KEY }}" > /tmp/key.txt
-          sui keytool import /tmp/key.txt ed25519 || true
-          rm /tmp/key.txt
+          sui keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
+          sui client switch --address 0xcebfa046d97f4b7ce66563d13d5bb107e70c1d3629de9b1ef4fb01f932d97fa7
           sui client active-address
           sui client gas
 
