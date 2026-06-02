@@ -1,0 +1,58 @@
+name: Deploy Move Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to deploy to'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - mainnet
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install suiup
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Sui CLI
+        run: suiup install sui@testnet
+
+      - name: Setup wallet
+        run: |
+          sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
+          sui client switch --env ${{ github.event.inputs.network }}
+          echo "${{ secrets.SUI_PRIVATE_KEY }}" | sui keytool import --key-scheme ed25519
+
+      - name: Build
+        working-directory: contracts/navis
+        run: sui move build
+
+      - name: Deploy
+        id: deploy
+        working-directory: contracts/navis
+        run: |
+          sui client publish \
+            --gas-budget 100000000 \
+            --json > deploy-output.json 2>&1
+          cat deploy-output.json
+          PACKAGE_ID=$(python3 -c "
+          import json
+          with open('deploy-output.json') as f:
+              data = json.load(f)
+          for obj in data.get('objectChanges', []):
+              if obj.get('type') == 'published':
+                  print(obj['packageId'])
+                  break
+          ")
+          echo "PACKAGE_ID=$PACKAGE_ID" >> $GITHUB_OUTPUT
+          echo "Deployed Package ID: $PACKAGE_ID"
