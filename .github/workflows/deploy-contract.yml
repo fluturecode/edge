@@ -51,8 +51,10 @@ jobs:
         run: |
           sui client publish \
             --gas-budget 100000000 \
-            --json > deploy-output.json 2>&1
+            --json > deploy-output.json 2>&1 || true
+          echo "=== Deploy Output ==="
           cat deploy-output.json
+          echo "=== End Output ==="
           PACKAGE_ID=$(python3 -c "
           import json
           with open('deploy-output.json') as f:
@@ -61,6 +63,10 @@ jobs:
               if obj.get('type') == 'published':
                   print(obj['packageId'])
                   break
-          ")
+          " 2>/dev/null || echo "")
+          if [ -z "$PACKAGE_ID" ]; then
+            echo "Deploy failed - check output above"
+            exit 1
+          fi
           echo "PACKAGE_ID=$PACKAGE_ID" >> $GITHUB_OUTPUT
           echo "✓ Deployed Package ID: $PACKAGE_ID"
