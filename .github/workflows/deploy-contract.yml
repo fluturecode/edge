@@ -21,33 +21,35 @@ jobs:
 
       - name: Install Sui CLI
         run: |
-          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
-          export PATH="$HOME/.local/bin:$PATH"
-          suiup install sui@testnet
-          echo "--- Finding sui binary ---"
-          find $HOME -name "sui" -type f 2>/dev/null
-          echo "--- Done ---"
+          LATEST=$(curl -s https://api.github.com/repos/MystenLabs/sui/releases | python3 -c "
+          import json,sys
+          releases = json.load(sys.stdin)
+          for r in releases:
+              if 'testnet' in r['tag_name']:
+                  print(r['tag_name'])
+                  break
+          ")
+          echo "Installing Sui $LATEST"
+          curl -LO "https://github.com/MystenLabs/sui/releases/download/${LATEST}/sui-${LATEST}-ubuntu-x86_64.tgz"
+          tar -xzf sui-${LATEST}-ubuntu-x86_64.tgz
+          sudo mv sui /usr/local/bin/sui
+          sui --version
 
       - name: Setup wallet
         run: |
-          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
-          echo "Using sui at: $SUI"
-          $SUI client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
-          $SUI client switch --env ${{ github.event.inputs.network }}
-          $SUI keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
+          sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
+          sui client switch --env ${{ github.event.inputs.network }}
+          sui keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
 
       - name: Build
-        run: |
-          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
-          cd contracts/navis
-          $SUI move build
+        working-directory: contracts/navis
+        run: sui move build
 
       - name: Deploy
         id: deploy
+        working-directory: contracts/navis
         run: |
-          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
-          cd contracts/navis
-          $SUI client publish \
+          sui client publish \
             --gas-budget 100000000 \
             --json > deploy-output.json 2>&1
           cat deploy-output.json
