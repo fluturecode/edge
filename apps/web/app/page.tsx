@@ -68,7 +68,15 @@ export default function Home() {
   };
 
   return (
-    <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(16px, 4vw, 32px)' }}>
+    <main style={{ 
+      minHeight: 'calc(100vh - 57px - 73px)', 
+      paddingBottom: 48,
+      background: T.bg, 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      padding: 'clamp(32px, 6vw, 64px) clamp(16px, 4vw, 32px)',
+    }}>
       <style>{`
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
         @keyframes prog { from{width:0} to{width:100%} }
