@@ -44,6 +44,14 @@ function BudgetRing({ total, spent }: { total: number; spent: number }) {
   );
 }
 
+const ECOSYSTEM = [
+  { label: 'zkLogin', color: T.teal },
+  { label: 'Sponsored Tx', color: T.gold },
+  { label: 'PTBs', color: T.blue },
+  { label: 'Walrus Logs', color: T.teal },
+  { label: 'Seal Policies', color: T.blue },
+];
+
 export default function Dashboard() {
   const router = useRouter();
   const [address, setAddress] = useState<string | null>(null);
@@ -66,7 +74,7 @@ export default function Dashboard() {
   const pass = passes[0];
 
   return (
-    <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
+    <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
       <style>{`@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }`}</style>
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
 
@@ -79,7 +87,21 @@ export default function Dashboard() {
           </div>
           <button
             onClick={() => router.push('/dashboard/create')}
-            style={{ background: T.teal, color: T.bg, border: 'none', borderRadius: 10, padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}
+            style={{
+              background: 'none',
+              color: T.teal,
+              border: `1px solid ${T.tealBorder}`,
+              borderRadius: 10,
+              padding: '9px 16px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'DM Mono, monospace',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.tealDim; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
           >
             + New EdgePass
           </button>
@@ -87,8 +109,18 @@ export default function Dashboard() {
 
         {/* Ecosystem strip */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-          {['zkLogin', 'Sponsored Tx', 'PTBs', 'Walrus Logs', 'Seal Policies'].map(e => (
-            <span key={e} style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '3px 8px', borderRadius: 5 }}>{e}</span>
+          {ECOSYSTEM.map(e => (
+            <span key={e.label} style={{
+              background: `${e.color}12`,
+              border: `1px solid ${e.color}35`,
+              color: e.color,
+              fontSize: 10,
+              fontFamily: 'DM Mono, monospace',
+              padding: '4px 10px',
+              borderRadius: 6,
+            }}>
+              {e.label}
+            </span>
           ))}
         </div>
 
@@ -110,7 +142,6 @@ export default function Dashboard() {
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, padding: 'clamp(16px, 3vw, 22px)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: T.teal, opacity: 0.04, filter: 'blur(50px)', top: -50, right: -30, pointerEvents: 'none' }}/>
 
-              {/* Pass header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>EdgePass · Festival Mode</div>
@@ -119,7 +150,6 @@ export default function Dashboard() {
                 <span style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>ACTIVE</span>
               </div>
 
-              {/* Budget ring + stats */}
               <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
                 <BudgetRing total={pass.budget} spent={pass.spent || 0} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, flex: 1, minWidth: 180 }}>
@@ -137,7 +167,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Merchants */}
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, color: T.grey2, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Approved Merchants</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -148,7 +177,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Activity button */}
             <button
               onClick={() => router.push('/dashboard/activity')}
               style={{ width: '100%', padding: 13, background: 'none', border: `1px solid ${T.border}`, borderRadius: 12, color: T.grey1, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'DM Mono, monospace' }}
