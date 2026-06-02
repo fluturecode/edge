@@ -15,6 +15,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SUI_BINARY: /home/runner/.local/share/suiup/binaries/testnet/sui-v1.73.0/sui
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,23 +26,29 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
           export PATH="$HOME/.local/bin:$PATH"
           suiup install sui@testnet
-          echo "$HOME/.local/share/suiup/binaries/testnet" >> $GITHUB_PATH
+          echo "Installed binaries:"
+          ls $HOME/.local/share/suiup/binaries/testnet/
 
       - name: Setup wallet
         run: |
-          sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
-          sui client switch --env ${{ github.event.inputs.network }}
-          sui keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
+          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          echo "Using sui at: $SUI"
+          $SUI client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
+          $SUI client switch --env ${{ github.event.inputs.network }}
+          $SUI keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
 
       - name: Build
-        working-directory: contracts/navis
-        run: sui move build
+        run: |
+          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          cd contracts/navis
+          $SUI move build
 
       - name: Deploy
         id: deploy
-        working-directory: contracts/navis
         run: |
-          sui client publish \
+          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          cd contracts/navis
+          $SUI client publish \
             --gas-budget 100000000 \
             --json > deploy-output.json 2>&1
           cat deploy-output.json
