@@ -3,9 +3,5 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
-  },
-  "references": [
-    { "path": "./packages/sdk" },
-    { "path": "./apps/web" }
-  ]
+  }
 }

@@ -29,14 +29,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <footer style={{
           textAlign: 'center',
-          padding: '24px',
+          padding: '32px 24px',
           borderTop: '1px solid #1A2740',
-          fontFamily: 'DM Mono, monospace',
-          fontSize: 11,
-          color: '#2E4060',
-          letterSpacing: '0.08em',
         }}>
-          The best infrastructure is invisible.
+          <style>{`
+            @keyframes vanish {
+              0% { opacity: 0; }
+              25% { opacity: 0.3; }
+              50% { opacity: 0.3; }
+              80% { opacity: 0; }
+              88% { opacity: 0; }
+              100% { opacity: 0; }
+            }
+          `}</style>
+          <span style={{
+            fontFamily: 'DM Mono, monospace',
+            fontSize: 13,
+            color: '#B8C8E0',
+            letterSpacing: '0.12em',
+            display: 'inline-block',
+            animation: 'vanish 7s ease-in-out infinite',
+          }}>
+            The best infrastructure is invisible.
+          </span>
         </footer>
       </body>
     </html>
