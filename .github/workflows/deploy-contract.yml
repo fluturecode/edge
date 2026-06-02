@@ -15,8 +15,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      SUI_BINARY: /home/runner/.local/share/suiup/binaries/testnet/sui-v1.73.0/sui
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,12 +24,13 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
           export PATH="$HOME/.local/bin:$PATH"
           suiup install sui@testnet
-          echo "Installed binaries:"
-          ls $HOME/.local/share/suiup/binaries/testnet/
+          echo "--- Finding sui binary ---"
+          find $HOME -name "sui" -type f 2>/dev/null
+          echo "--- Done ---"
 
       - name: Setup wallet
         run: |
-          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
           echo "Using sui at: $SUI"
           $SUI client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
           $SUI client switch --env ${{ github.event.inputs.network }}
@@ -39,14 +38,14 @@ jobs:
 
       - name: Build
         run: |
-          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
           cd contracts/navis
           $SUI move build
 
       - name: Deploy
         id: deploy
         run: |
-          SUI=$(ls $HOME/.local/share/suiup/binaries/testnet/*/sui | head -1)
+          SUI=$(find $HOME -name "sui" -type f 2>/dev/null | head -1)
           cd contracts/navis
           $SUI client publish \
             --gas-budget 100000000 \
