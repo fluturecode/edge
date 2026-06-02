@@ -9,7 +9,7 @@ export const NETWORK_URLS: Record<string, string> = {
 // Fill these in after deploying the Move contract
 export const EDGE_PACKAGE_ID: Record<string, string> = {
   mainnet: "",
-  testnet: "",
+  testnet: "0xac80f097f390ba51c4cd82579d4a2cb8026170f1de421424cfd4c8930fe1521d",
   devnet: "",
 };
 
