@@ -1,7 +1,6 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { SuiLogo } from '@/lib/logos';
 
 export function NavBar() {
   const pathname = usePathname();
@@ -15,6 +14,7 @@ export function NavBar() {
       borderBottom: '1px solid #1A2740', background: '#080C14',
       position: 'sticky', top: 0, zIndex: 50, gap: 12,
     }}>
+      {/* Logo */}
       <div
         onClick={() => router.push(isDashboard ? '/dashboard' : '/')}
         style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
@@ -29,11 +29,14 @@ export function NavBar() {
         <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#FFFFFF', letterSpacing: '0.08em', fontWeight: 700 }}>EDGE</span>
         <div className="nav-built-on" style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
           <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#5A7090' }}>built on</span>
-          <SuiLogo size={13} />
+          <svg width="13" height="13" viewBox="0 0 64 64" fill="none">
+            <path d="M32 4C32 4 10 24 10 38C10 50.15 19.85 60 32 60C44.15 60 54 50.15 54 38C54 24 32 4 32 4Z" fill="#4DA2FF"/>
+          </svg>
           <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#5A7090' }}>Sui</span>
         </div>
       </div>
 
+      {/* Nav links — dashboard only */}
       {isDashboard && (
         <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
           {[
@@ -58,6 +61,7 @@ export function NavBar() {
         </div>
       )}
 
+      {/* Network pill */}
       <div style={{ background: '#0D1420', border: '1px solid #1A2740', borderRadius: 8, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D4AA', boxShadow: '0 0 6px #00D4AA', display: 'inline-block' }}/>
         <span style={{ fontSize: 11, color: '#5A7090', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>DEVNET</span>
