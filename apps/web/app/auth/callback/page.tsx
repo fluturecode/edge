@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getZkLoginAddress } from '@/lib/zklogin';
+import { setUserAddress } from '@/lib/signer';
 
 export default function Callback() {
   const router = useRouter();
@@ -12,19 +14,20 @@ export default function Callback() {
     const idToken = params.get('id_token');
 
     if (idToken) {
-      // Store the token
       localStorage.setItem('edge_id_token', idToken);
-      console.log('Got ID token!', idToken.substring(0, 20) + '...');
+      const address = getZkLoginAddress(idToken);
+      setUserAddress(address);
       router.push('/dashboard');
     } else {
-      console.error('No id_token in callback');
       router.push('/');
     }
   }, []);
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <p>Signing you in...</p>
+    <main style={{ minHeight: 'calc(100vh - 57px)', background: '#080C14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: '#00D4AA' }}>
+        $ authenticating...
+      </p>
     </main>
   );
 }

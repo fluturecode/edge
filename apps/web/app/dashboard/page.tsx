@@ -8,20 +8,13 @@ const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
   blue: '#4DA2FF', blueDim: 'rgba(77,162,255,0.12)', blueBorder: 'rgba(77,162,255,0.3)',
   teal: '#00D4AA', tealDim: 'rgba(0,212,170,0.1)', tealBorder: 'rgba(0,212,170,0.3)',
-  gold: '#FFB830', goldDim: 'rgba(255,184,48,0.1)',
-  white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
+  gold: '#FFB830', white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
 
 interface EdgePass {
-  id: string;
-  budget: number;
-  spent: number;
-  autoThreshold: number;
-  escalateThreshold: number;
-  expiry: number;
-  merchants: string[];
-  active: boolean;
-  createdAt: number;
+  id: string; budget: number; spent: number; autoThreshold: number;
+  escalateThreshold: number; expiry: number; merchants: string[];
+  active: boolean; createdAt: number; packageId?: string; network?: string;
 }
 
 function BudgetRing({ total, spent }: { total: number; spent: number }) {
@@ -65,9 +58,7 @@ export default function Dashboard() {
       setAddress(getZkLoginAddress(token));
       const decoded = getDecodedJwt(token) as any;
       setUser({ name: decoded.name, email: decoded.email });
-    } catch (e) {
-      router.push('/');
-    }
+    } catch (e) { router.push('/'); }
     setPasses(JSON.parse(localStorage.getItem('edge_passes') || '[]'));
   }, []);
 
@@ -75,77 +66,51 @@ export default function Dashboard() {
 
   return (
     <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
-      <style>{`@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }`}</style>
+      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
 
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: 0 }}>Dashboard</h1>
             {user && <p style={{ fontSize: 12, color: T.grey2, margin: '4px 0 0', fontFamily: 'Inter, sans-serif' }}>{user.name} · {user.email}</p>}
             {address && <p style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, margin: '4px 0 0', wordBreak: 'break-all' }}>{address.slice(0, 20)}...{address.slice(-8)}</p>}
           </div>
-          <button
-            onClick={() => router.push('/dashboard/create')}
-            style={{
-              background: 'none',
-              color: T.teal,
-              border: `1px solid ${T.tealBorder}`,
-              borderRadius: 10,
-              padding: '9px 16px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'DM Mono, monospace',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-            }}
+          <button onClick={() => router.push('/dashboard/create')}
+            style={{ background: 'none', color: T.teal, border: `1px solid ${T.tealBorder}`, borderRadius: 10, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.background = T.tealDim; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
-          >
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
             + New EdgePass
           </button>
         </div>
 
-        {/* Ecosystem strip */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
           {ECOSYSTEM.map(e => (
-            <span key={e.label} style={{
-              background: `${e.color}12`,
-              border: `1px solid ${e.color}35`,
-              color: e.color,
-              fontSize: 10,
-              fontFamily: 'DM Mono, monospace',
-              padding: '4px 10px',
-              borderRadius: 6,
-            }}>
+            <span key={e.label} style={{ background: `${e.color}12`, border: `1px solid ${e.color}35`, color: e.color, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '4px 10px', borderRadius: 6 }}>
               {e.label}
             </span>
           ))}
         </div>
 
-        {/* No passes state */}
         {!pass ? (
           <div style={{ textAlign: 'center', padding: '56px 24px', border: `1px dashed ${T.border}`, borderRadius: 16, animation: 'fadeUp 0.4s ease-out' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 20 }}>No EdgePasses found_</div>
-            <button
-              onClick={() => router.push('/dashboard/create')}
-              style={{ background: T.teal, color: T.bg, border: 'none', borderRadius: 10, padding: '13px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
-            >
+            <button onClick={() => router.push('/dashboard/create')}
+              style={{ background: T.teal, color: T.bg, border: 'none', borderRadius: 10, padding: '13px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
               Create your first EdgePass
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeUp 0.4s ease-out' }}>
-
-            {/* Pass card */}
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, padding: 'clamp(16px, 3vw, 22px)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: T.teal, opacity: 0.04, filter: 'blur(50px)', top: -50, right: -30, pointerEvents: 'none' }}/>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>EdgePass · Festival Mode</div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue }}>0x4e2f...8b91</div>
+                  <a href={`https://suiscan.xyz/testnet/object/${pass.id}`} target="_blank" rel="noopener noreferrer"
+                    style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, textDecoration: 'none' }}>
+                    {pass.id.slice(0, 10)}...{pass.id.slice(-8)} ↗
+                  </a>
                 </div>
                 <span style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>ACTIVE</span>
               </div>
@@ -154,7 +119,7 @@ export default function Dashboard() {
                 <BudgetRing total={pass.budget} spent={pass.spent || 0} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, flex: 1, minWidth: 180 }}>
                   {[
-                    { l: 'Remaining', v: `$${(pass.budget - (pass.spent || 0)).toFixed(0)}`, c: T.teal },
+                    { l: 'Remaining', v: `$${(pass.budget - (pass.spent||0)).toFixed(0)}`, c: T.teal },
                     { l: 'Auto ≤', v: `$${pass.autoThreshold}`, c: T.white },
                     { l: 'Escalate ≥', v: `$${pass.escalateThreshold}`, c: T.gold },
                     { l: 'Expires', v: `${pass.expiry}h`, c: T.grey1 },
@@ -175,14 +140,25 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
+
+              {pass.packageId && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>contract:</span>
+                  <a href={`https://suiscan.xyz/testnet/object/${pass.packageId}`} target="_blank" rel="noopener noreferrer"
+                    style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, textDecoration: 'none' }}>
+                    {pass.packageId.slice(0, 10)}...{pass.packageId.slice(-8)} ↗
+                  </a>
+                  <span style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '2px 8px', borderRadius: 4 }}>
+                    {pass.network || 'testnet'}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={() => router.push('/dashboard/activity')}
+            <button onClick={() => router.push('/dashboard/activity')}
               style={{ width: '100%', padding: 13, background: 'none', border: `1px solid ${T.border}`, borderRadius: 12, color: T.grey1, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'DM Mono, monospace' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.color = T.teal; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}>
               → Run Festival Mode Simulation
             </button>
           </div>

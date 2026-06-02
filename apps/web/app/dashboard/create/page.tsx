@@ -12,6 +12,7 @@ const T = {
 };
 
 const MERCHANTS = ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'];
+const PACKAGE_ID = '0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d';
 
 export default function CreatePass() {
   const router = useRouter();
@@ -28,18 +29,41 @@ export default function CreatePass() {
     setState('signing');
     await new Promise(r => setTimeout(r, 1000));
     setState('deploying');
-    await new Promise(r => setTimeout(r, 1400));
-    setState('done');
-    await new Promise(r => setTimeout(r, 600));
+
     const pass = {
       ...form,
       id: crypto.randomUUID(),
+      packageId: PACKAGE_ID,
+      network: 'testnet',
       spent: 0,
       active: true,
       createdAt: Date.now(),
     };
+
+    await new Promise(r => setTimeout(r, 1400));
+    setState('done');
+
+    // Store policy on Walrus via Seal
+    try {
+      const { storeEncryptedPolicy } = await import('@/lib/seal');
+      const address = localStorage.getItem('edge_sui_address') || '0x...';
+      await storeEncryptedPolicy({
+        passId: pass.id,
+        owner: address,
+        approvedMerchants: form.merchants,
+        budget: form.budget,
+        autoThreshold: form.autoThreshold,
+        escalateThreshold: form.escalateThreshold,
+        createdAt: Date.now(),
+      });
+    } catch (e) {
+      console.error('Seal store failed:', e);
+    }
+
     const existing = JSON.parse(localStorage.getItem('edge_passes') || '[]');
     localStorage.setItem('edge_passes', JSON.stringify([pass, ...existing]));
+
+    await new Promise(r => setTimeout(r, 600));
     router.push('/dashboard');
   };
 
@@ -58,7 +82,7 @@ export default function CreatePass() {
   };
 
   return (
-    <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
+    <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
       <div style={{ maxWidth: 460, margin: '0 auto' }}>
 
         {/* Header */}
@@ -161,24 +185,20 @@ export default function CreatePass() {
             onClick={handleCreate}
             disabled={state !== 'idle'}
             style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 12,
+              width: '100%', padding: 14, borderRadius: 12,
               border: `1px solid ${state !== 'idle' ? T.border : 'transparent'}`,
               background: state === 'done' ? T.teal : state !== 'idle' ? T.bgCard : T.blue,
               color: state === 'done' ? T.bg : state !== 'idle' ? T.grey2 : T.white,
-              fontSize: 14,
-              fontWeight: 700,
+              fontSize: 14, fontWeight: 700,
               cursor: state !== 'idle' ? 'default' : 'pointer',
-              transition: 'all 0.4s',
-              fontFamily: 'Inter, sans-serif',
+              transition: 'all 0.4s', fontFamily: 'Inter, sans-serif',
             }}
           >
-  {state === 'idle' && 'Create EdgePass on Sui'}
-  {state === 'signing' && '$ signing with zkLogin...'}
-  {state === 'deploying' && '$ deploying Move object...'}
-  {state === 'done' && '✓ EdgePass minted on-chain'}
-</button>
+            {state === 'idle' && 'Create EdgePass on Sui'}
+            {state === 'signing' && '$ signing with zkLogin...'}
+            {state === 'deploying' && '$ deploying Move object...'}
+            {state === 'done' && '✓ EdgePass minted on-chain'}
+          </button>
 
           <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, margin: 0, fontFamily: 'DM Mono, monospace' }}>
             gas sponsored by Enoki · no SUI required · PTB atomic execution
