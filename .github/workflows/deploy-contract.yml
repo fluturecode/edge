@@ -39,7 +39,11 @@ jobs:
         run: |
           sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
           sui client switch --env ${{ github.event.inputs.network }}
-          sui keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
+          echo "${{ secrets.SUI_PRIVATE_KEY }}" > /tmp/key.txt
+          sui keytool import /tmp/key.txt ed25519 || true
+          rm /tmp/key.txt
+          sui client active-address
+          sui client gas
 
       - name: Build
         working-directory: contracts/navis
