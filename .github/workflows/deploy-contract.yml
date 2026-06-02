@@ -19,19 +19,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install suiup
+      - name: Install Sui CLI
         run: |
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Install Sui CLI
-        run: suiup install sui@testnet
+          export PATH="$HOME/.local/bin:$PATH"
+          suiup install sui@testnet
+          echo "$HOME/.local/share/suiup/binaries/testnet" >> $GITHUB_PATH
 
       - name: Setup wallet
         run: |
           sui client new-env --alias ${{ github.event.inputs.network }} --rpc https://fullnode.${{ github.event.inputs.network }}.sui.io:443 || true
           sui client switch --env ${{ github.event.inputs.network }}
-          echo "${{ secrets.SUI_PRIVATE_KEY }}" | sui keytool import --key-scheme ed25519
+          sui keytool import "${{ secrets.SUI_PRIVATE_KEY }}" ed25519
 
       - name: Build
         working-directory: contracts/navis
@@ -55,4 +54,4 @@ jobs:
                   break
           ")
           echo "PACKAGE_ID=$PACKAGE_ID" >> $GITHUB_OUTPUT
-          echo "Deployed Package ID: $PACKAGE_ID"
+          echo "✓ Deployed Package ID: $PACKAGE_ID"
