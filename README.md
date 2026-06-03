@@ -11,8 +11,9 @@
 [![npm](https://img.shields.io/badge/npm-%40edge--protocol%2Fsdk-FF4D6A?style=flat-square)](https://npmjs.com/package/@edge-protocol/sdk)
 [![Tests](https://img.shields.io/badge/tests-6%2F6%20passing-00D4AA?style=flat-square)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-FFB830?style=flat-square)](LICENSE)
+[![Sui Overflow 2026](https://img.shields.io/badge/Sui%20Overflow-2026%20🏆-4DA2FF?style=flat-square)](https://overflow.sui.io)
 
-**[Live Demo](https://edge-web-cyan.vercel.app) · [npm](#sdk-quickstart) · [Sui Overflow 2026](https://overflow.sui.io)**
+**[Live Demo](https://edge-web-git-main-fluturecodes-projects.vercel.app) · [npm](#sdk-quickstart) · [Sui Overflow 2026](https://overflow.sui.io)**
 
 *Users set the course. Edge handles the journey safely.*
 
@@ -92,7 +93,7 @@ Agent calls sdk.execute() (many times)
          ├─▶ ExecutionEngine builds PTB (atomic)
          │         validate → execute → update spent → emit event
          │
-         └─▶ Walrus writes immutable audit log
+         └─▶ 🗂 Walrus writes immutable audit log
 ```
 
 ---
@@ -121,8 +122,20 @@ Audit log → [live on Walrus](https://walruscan.com/testnet/blob/aMp7SskBz83OJL
 | ⛽ **Enoki** | Gas sponsorship — users never pay transaction fees |
 | 🧱 **PTBs** | Atomic: validate → execute → update → log |
 | 📦 **Move Objects** | EdgePass as programmable on-chain state |
-| 🐋 **Walrus** | Immutable, decentralized audit logs |
+| 🗂 **Walrus** | Immutable, decentralized audit logs |
 | 🔒 **Seal** | Encrypted trust policies |
+
+---
+
+## Move Contract
+
+**Deployed to Sui testnet:**
+```
+Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+Tx Digest:  64fovgDj7P5DX9mNDTEEmEwVU2cxxJhQvnZq2eos1s84
+```
+
+[View on Sui Explorer →](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d)
 
 ---
 
@@ -160,12 +173,16 @@ cd packages/sdk && pnpm test
 - [x] EdgePass creation UI
 - [x] PolicyEngine — 6/6 tests
 - [x] Festival Mode simulation
-- [x] Walrus audit logs — live on testnet
-- [ ] Move contract — testnet deploy
-- [ ] Sponsored transactions
+- [x] 🗂 Walrus audit logs — live on testnet
+- [x] Move contract — testnet deployed
+- [x] GitHub Actions CI/CD pipeline
+- [x] Seal encrypted policy foundation
+- [ ] Real on-chain EdgePass creation via zkLogin signer
+- [ ] Sponsored transactions wired
 - [ ] `@edge-protocol/sdk` on npm
+- [ ] AI agent demo
 - [ ] Mainnet deployment
-- [ ] Seal encrypted policies
+- [ ] Seal full encryption
 
 ---
 
