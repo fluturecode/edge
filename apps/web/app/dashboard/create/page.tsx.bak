@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
-import { buildSigner, getUserAddress } from '@/lib/signer';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -28,6 +26,11 @@ const LOG_STEPS = [
   { prefix: '→', color: T.grey2, text: 'expiry: 172,800,000ms · 5 merchants', delay: 2450, indent: true },
   { prefix: '✓', color: T.teal, text: 'PTB constructed · 2 transactions', delay: 2800 },
   { prefix: '$', color: T.grey1, text: 'submitting to Sui testnet...', delay: 3200 },
+  { prefix: '✓', color: T.teal, text: 'transaction confirmed · 487ms', delay: 4200 },
+  { prefix: '✓', color: T.teal, text: 'EdgePass minted · Move object created', delay: 4600 },
+  { prefix: '$', color: T.grey1, text: 'encrypting policy with Seal...', delay: 5000 },
+  { prefix: '✓', color: T.teal, text: 'policy stored on Walrus · blob certified', delay: 5600 },
+  { prefix: '→', color: T.blue, text: 'EdgePass ready', delay: 6100 },
 ];
 
 export default function CreatePass() {
@@ -39,95 +42,57 @@ export default function CreatePass() {
     expiry: 48,
     merchants: MERCHANTS,
   });
-  const [state, setState] = useState<'idle' | 'signing' | 'deploying' | 'storing' | 'done' | 'error'>('idle');
+  const [state, setState] = useState<'idle' | 'signing' | 'deploying' | 'storing' | 'done'>('idle');
   const [visibleLines, setVisibleLines] = useState<number[]>([]);
-  const [txDigest, setTxDigest] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleCreate = async () => {
-    console.log('handleCreate fired');
+    
     if (state !== 'idle') return;
     setState('signing');
-    setVisibleLines([]);
 
     LOG_STEPS.forEach((step, i) => {
       setTimeout(() => {
         setVisibleLines(prev => [...prev, i]);
         if (i === 3) setState('deploying');
+        if (i === 13) setState('storing');
+        if (i === LOG_STEPS.length - 1) {
+          setTimeout(async () => {
+            const pass = {
+              ...form,
+              id: crypto.randomUUID(),
+              packageId: PACKAGE_ID,
+              network: 'testnet',
+              spent: 0,
+              active: true,
+              createdAt: Date.now(),
+            };
+            try {
+              const { storeEncryptedPolicy } = await import('@/lib/seal');
+              const address = localStorage.getItem('edge_sui_address') || '0x...';
+              await storeEncryptedPolicy({
+                passId: pass.id,
+                owner: address,
+                approvedMerchants: form.merchants,
+                budget: form.budget,
+                autoThreshold: form.autoThreshold,
+                escalateThreshold: form.escalateThreshold,
+                createdAt: Date.now(),
+              });
+            } catch (e) {
+              console.error('Seal store failed:', e);
+            }
+            const existing = JSON.parse(localStorage.getItem('edge_passes') || '[]');
+            localStorage.setItem('edge_passes', JSON.stringify([pass, ...existing]));
+            setState('done');
+            await new Promise(r => setTimeout(r, 800));
+            router.push('/dashboard');
+          }, 400);
+        }
       }, step.delay);
     });
-
-    try {
-      console.log('try block entered');
-      console.log('API key:', process.env.NEXT_PUBLIC_ENOKI_API_KEY);
-
-      const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-      console.log('signer built');
-
-      const sdk = new EdgePass({
-        network: 'testnet',
-        enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY!,
-      });
-      console.log('sdk built');
-
-      const owner = getUserAddress();
-      console.log('owner:', owner);
-      if (!owner) throw new Error('Not authenticated');
-
-      console.log('calling sdk.create...');
-      const pass = await sdk.create({
-        budget:            BigInt(form.budget) * MIST_PER_SUI,
-        autoThreshold:     BigInt(form.autoThreshold) * MIST_PER_SUI,
-        escalateThreshold: BigInt(form.escalateThreshold) * MIST_PER_SUI,
-        approvedMerchants: form.merchants,
-        expiryMs:          form.expiry * 60 * 60 * 1000,
-        owner,
-      }, signer);
-
-      setTxDigest(pass.id);
-      setVisibleLines(prev => [...prev, LOG_STEPS.length]);
-      setState('storing');
-
-      try {
-        const { storeEncryptedPolicy } = await import('@/lib/seal');
-        await storeEncryptedPolicy({
-          passId: pass.id,
-          owner,
-          approvedMerchants: form.merchants,
-          budget: form.budget,
-          autoThreshold: form.autoThreshold,
-          escalateThreshold: form.escalateThreshold,
-          createdAt: Date.now(),
-        });
-        setVisibleLines(prev => [...prev, LOG_STEPS.length + 1]);
-      } catch (e) {
-        console.error('Seal store failed:', e);
-      }
-
-      const existing = JSON.parse(localStorage.getItem('edge_passes') || '[]');
-      localStorage.setItem('edge_pass_id', pass.id);
-      localStorage.setItem('edge_passes', JSON.stringify([{
-        ...form,
-        id: pass.id,
-        packageId: PACKAGE_ID,
-        network: 'testnet',
-        spent: 0,
-        active: true,
-        createdAt: Date.now(),
-      }, ...existing]));
-
-      setState('done');
-      await new Promise(r => setTimeout(r, 800));
-      router.push('/dashboard');
-
-    } catch (e) {
-      console.error('EdgePass creation failed:', e);
-      setErrorMsg(e instanceof Error ? e.message : 'Unknown error');
-      setState('error');
-    }
   };
 
-  const isRunning = state === 'signing' || state === 'deploying' || state === 'storing';
+  const isRunning = state !== 'idle' && state !== 'done';
   const showPTB = state === 'idle';
   const showLog = state !== 'idle';
 
@@ -137,25 +102,17 @@ export default function CreatePass() {
     deploying: '$ deploying Move object...',
     storing: '$ storing policy on Walrus...',
     done: '✓ EdgePass minted on-chain',
-    error: '✗ failed — try again',
   }[state];
 
   const btnStyle: React.CSSProperties = {
     width: '100%', padding: 14, borderRadius: 12,
     border: `1px solid ${isRunning ? T.border : 'transparent'}`,
-    background: state === 'done' ? T.teal : state === 'error' ? '#FF4D6A' : isRunning ? T.bgCard : T.blue,
+    background: state === 'done' ? T.teal : isRunning ? T.bgCard : T.blue,
     color: state === 'done' ? T.bg : isRunning ? T.grey2 : T.white,
     fontSize: 14, fontWeight: 700,
     cursor: isRunning ? 'default' : 'pointer',
     transition: 'all 0.4s', fontFamily: 'Inter, sans-serif',
   };
-
-  const dynamicLogSteps = [
-    ...LOG_STEPS,
-    { prefix: '✓', color: T.teal, text: `transaction confirmed · EdgePass minted · ${txDigest ? txDigest.slice(0, 12) + '...' : ''}`, indent: false },
-    { prefix: '✓', color: T.teal, text: 'policy stored on Walrus · blob certified', indent: false },
-    { prefix: '→', color: T.blue, text: 'EdgePass ready', indent: false },
-  ];
 
   return (
     <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
@@ -166,6 +123,7 @@ export default function CreatePass() {
       `}</style>
       <div style={{ maxWidth: 460, margin: '0 auto' }}>
 
+        {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <button onClick={() => router.push('/dashboard')}
             style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 16, padding: 0 }}>
@@ -180,6 +138,7 @@ export default function CreatePass() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+          {/* Form fields — always visible */}
           <div>
             <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Total Budget</label>
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '11px 14px', color: T.grey1, fontFamily: 'DM Mono, monospace', fontSize: 14 }}>
@@ -221,6 +180,7 @@ export default function CreatePass() {
             </div>
           </div>
 
+          {/* PTB Preview — fades out when create is clicked */}
           {showPTB && (
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', animation: 'fadeUp 0.3s ease' }}>
               <div style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', marginBottom: 8, letterSpacing: '0.06em' }}>PTB PREVIEW</div>
@@ -235,11 +195,12 @@ export default function CreatePass() {
             </div>
           )}
 
+          {/* Terminal log — fades in when create is clicked */}
           {showLog && (
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', animation: 'fadeUp 0.4s ease', minHeight: 80 }}>
               <div style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', marginBottom: 10, letterSpacing: '0.06em' }}>EXECUTION LOG</div>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, lineHeight: 1.9 }}>
-                {dynamicLogSteps.map((step, i) => (
+                {LOG_STEPS.map((step, i) => (
                   visibleLines.includes(i) && (
                     <div key={i} className="log-line" style={{ display: 'flex', gap: 8, paddingLeft: step.indent ? 16 : 0 }}>
                       <span style={{ color: step.color, flexShrink: 0 }}>{step.prefix}</span>
@@ -251,12 +212,7 @@ export default function CreatePass() {
             </div>
           )}
 
-          {state === 'error' && errorMsg && (
-            <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#FF4D6A' }}>✗ {errorMsg}</div>
-            </div>
-          )}
-
+          {/* Submit button */}
           <button onClick={handleCreate} disabled={isRunning} style={btnStyle}>
             {btnLabel}
           </button>

@@ -22,20 +22,6 @@ export class EdgePass {
     this.engine = new ExecutionEngine(config.network);
   }
 
-  /**
-   * Creates a new EdgePass on-chain.
-   * Builds a PTB that mints a Move object with the given config.
-   * 
-   * Usage:
-   * const pass = await sdk.create({
-   *   budget: 300n * MIST_PER_SUI,
-   *   autoThreshold: 50n * MIST_PER_SUI,
-   *   escalateThreshold: 100n * MIST_PER_SUI,
-   *   approvedMerchants: ["Shuttle Express", "Hydra Bar"],
-   *   expiryMs: 48 * 60 * 60 * 1000,
-   *   owner: "0x...",
-   * });
-   */
   async create(
     passConfig: EdgePassConfig,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string; objectId?: string }> }
@@ -53,14 +39,33 @@ export class EdgePass {
         tx.pure.u64(passConfig.escalateThreshold),
         tx.pure.u64(passConfig.expiryMs),
         tx.pure.vector("string", passConfig.approvedMerchants),
+        tx.object('0x6'), // Sui shared Clock object
       ],
     });
 
     const result = await signer.signAndExecute(tx);
+    await new Promise(r => setTimeout(r, 2000));
 
-    const objectId = result.objectId || "";
+    // Fetch the created object ID from the transaction effects
+    let objectId = result.objectId || "";
+    if (!objectId && result.digest) {
+      try {
+        const txResult = await this.client.getTransactionBlock({
+          digest: result.digest,
+          options: { showObjectChanges: true },
+        });
+        const created = txResult.objectChanges?.find(
+          (c) => c.type === "created" && c.objectType?.includes("edge_pass::EdgePass")
+        );
+        if (created && created.type === "created") {
+          objectId = created.objectId;
+        }
+      } catch (e) {
+        console.error("Could not fetch object ID from tx:", e);
+      }
+    }
+
     const now = Date.now();
-
     return {
       id: objectId,
       config: passConfig,
@@ -71,17 +76,6 @@ export class EdgePass {
     };
   }
 
-  /**
-   * Executes a transaction against an EdgePass.
-   * Runs policy validation first — if blocked or escalated,
-   * returns without hitting the chain.
-   * 
-   * Usage:
-   * const outcome = await sdk.execute(pass, {
-   *   merchant: "Shuttle Express",
-   *   amount: 18_500_000_000n,
-   * }, signer);
-   */
   async execute(
     pass: EdgePassObject,
     request: TransactionRequest,
@@ -90,25 +84,14 @@ export class EdgePass {
     return this.engine.execute(pass, request, signer);
   }
 
-  /**
-   * Validates a transaction against an EdgePass without executing.
-   * Useful for UI preview — show the user what will happen before they confirm.
-   */
   validate(pass: EdgePassObject, request: TransactionRequest) {
     return PolicyEngine.validate(pass, request);
   }
 
-  /**
-   * Fetches a live EdgePass from the Sui network by object ID.
-   */
   async fetch(objectId: string): Promise<EdgePassObject | null> {
     return this.engine.fetchPass(objectId);
   }
 
-  /**
-   * Revokes an EdgePass on-chain.
-   * After revocation, all future execute() calls will return blocked.
-   */
   async revoke(
     pass: EdgePassObject,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> }
@@ -126,16 +109,10 @@ export class EdgePass {
     return signer.signAndExecute(tx);
   }
 
-  /**
-   * Returns remaining budget for a pass.
-   */
   remainingBudget(pass: EdgePassObject): bigint {
     return PolicyEngine.remainingBudget(pass);
   }
 
-  /**
-   * Checks if a pass is still valid.
-   */
   isValid(pass: EdgePassObject): boolean {
     return PolicyEngine.isValid(pass);
   }

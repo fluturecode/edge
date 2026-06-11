@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getZkLoginAddress, generateZkProof } from '@/lib/zklogin';
+import { generateZkProof } from '@/lib/zklogin';
 import { setUserAddress } from '@/lib/signer';
 
 export default function Callback() {
@@ -17,8 +17,6 @@ export default function Callback() {
 
     const run = async () => {
       localStorage.setItem('edge_id_token', idToken);
-      const address = getZkLoginAddress(idToken);
-      setUserAddress(address);
 
       const ephemeralKey = localStorage.getItem('edge_ephemeral_key');
       const randomness = localStorage.getItem('edge_randomness');
@@ -31,12 +29,31 @@ export default function Callback() {
             ephemeralKey,
             randomness,
             maxEpoch,
-            userAddress: address,
+            userAddress: '',
           });
           localStorage.setItem('edge_zk_proof', JSON.stringify(proof));
+
+          // Get address from Enoki — consistent with the salt Enoki uses
+          const addrRes = await fetch('https://api.enoki.mystenlabs.com/v1/zklogin', {
+            headers: {
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_ENOKI_API_KEY}`,
+              'zklogin-jwt': idToken,
+            },
+          });
+          const addrData = await addrRes.json();
+          const enokiAddress = addrData.data?.address;
+          if (enokiAddress) {
+            setUserAddress(enokiAddress);
+            console.log('Enoki address:', enokiAddress);
+          } else {
+            console.error('Could not get Enoki address:', addrData);
+            router.push('/');
+            return;
+          }
         } catch (e) {
           console.error('ZK proof generation failed:', e);
-          // Non-fatal — simulation mode still works
+          router.push('/');
+          return;
         }
       }
 

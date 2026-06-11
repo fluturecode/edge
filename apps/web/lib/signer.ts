@@ -1,6 +1,8 @@
+import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { toBase64 } from '@mysten/sui/utils';
-import { signWithZkLogin } from '@/lib/zklogin';
+
+const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
 
 export function getUserAddress(): string | null {
   if (typeof window === 'undefined') return null;
@@ -17,64 +19,38 @@ export function getIdToken(): string | null {
   return localStorage.getItem('edge_id_token');
 }
 
-export function buildSigner(enokiApiKey: string) {
+export function buildSigner(_enokiApiKey: string) {
   return {
     signAndExecute: async (tx: Transaction) => {
       const idToken = getIdToken();
       const sender = getUserAddress();
       if (!idToken || !sender) throw new Error('Not authenticated');
 
-      // 1. Build transaction kind bytes
-      const txKindBytes = await tx.build({ onlyTransactionKind: true });
+      const ephemeralKey = localStorage.getItem('edge_ephemeral_key');
+      const proofStr = localStorage.getItem('edge_zk_proof');
+      const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
+      if (!ephemeralKey || !proofStr) throw new Error('Missing zkLogin credentials');
 
-      // 2. Ask Enoki to sponsor — returns full tx bytes with gas filled in
-      const sponsorRes = await fetch(
-        'https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${enokiApiKey}`,
-            'zklogin-jwt': idToken,
-          },
-          body: JSON.stringify({
-            network: 'testnet',
-            transactionBlockKindBytes: toBase64(txKindBytes),
-            sender,
-          }),
-        }
-      );
+      // Set sender so gas is paid from zkLogin address
+      tx.setSender(sender);
 
-      if (!sponsorRes.ok) {
-        const err = await sponsorRes.text();
-        throw new Error(`Enoki sponsorship failed: ${err}`);
-      }
+      const txBytes = await tx.build({ client: suiClient });
 
-      const { bytes, digest } = await sponsorRes.json();
+      const res = await fetch('/api/sign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          txBytes: toBase64(txBytes),
+          ephemeralKey,
+          zkProof: JSON.parse(proofStr),
+          maxEpoch,
+          idToken
+        }),
+      });
 
-      // 3. Sign with zkLogin
-      const { fromBase64 } = await import('@mysten/sui/utils');
-      const signature = await signWithZkLogin(fromBase64(bytes));
-
-      // 4. Execute the sponsored transaction
-      const execRes = await fetch(
-        `https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor/${digest}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${enokiApiKey}`,
-          },
-          body: JSON.stringify({ signature }),
-        }
-      );
-
-      if (!execRes.ok) {
-        const err = await execRes.text();
-        throw new Error(`Enoki execution failed: ${err}`);
-      }
-
-      return { digest };
+      const data = await res.json();
+      if (!res.ok) throw new Error(`Transaction failed: ${JSON.stringify(data)}`);
+      return { digest: data.digest };
     },
   };
 }

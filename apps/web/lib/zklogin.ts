@@ -32,21 +32,24 @@ export async function generateZkProof({
   maxEpoch,
   userAddress,
 }: ZkProofParams): Promise<object> {
-  const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey); // fixed — no fromBase64
+  const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
   const ephemeralPublicKey = keypair.getPublicKey();
 
+  // Use Enoki ZKP endpoint — returns addressSeed which is required for signing
   const response = await fetch(
-    'https://prover-dev.mystenlabs.com/v1',
+    'https://api.enoki.mystenlabs.com/v1/zklogin/zkp',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_ENOKI_API_KEY}`,
+        'zklogin-jwt': idToken,
+      },
       body: JSON.stringify({
-        jwt: idToken,
-        extendedEphemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
+        network: 'testnet',
+        ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
         maxEpoch,
-        jwtRandomness: randomness,
-        salt: '0',
-        keyClaimName: 'sub',
+        randomness: randomness.toString(),
       }),
     }
   );
@@ -56,7 +59,8 @@ export async function generateZkProof({
     throw new Error(`ZK prover failed: ${err}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  return data.data; // { proofPoints, issBase64Details, headerBase64, addressSeed }
 }
 
 export async function signWithZkLogin(
@@ -65,7 +69,6 @@ export async function signWithZkLogin(
   const ephemeralKey = localStorage.getItem('edge_ephemeral_key');
   const proofStr = localStorage.getItem('edge_zk_proof');
   const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
-  const randomness = localStorage.getItem('edge_randomness');
   const idToken = localStorage.getItem('edge_id_token');
 
   if (!ephemeralKey || !proofStr || !idToken) {
@@ -80,7 +83,7 @@ export async function signWithZkLogin(
   const zkSignature = getZkLoginSignature({
     inputs: {
       ...proof,
-      addressSeed: BigInt(0).toString(),
+      addressSeed: proof.addressSeed,
     },
     maxEpoch,
     userSignature: ephemeralSignature,

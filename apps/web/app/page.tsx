@@ -54,18 +54,33 @@ export default function Home() {
   const [showButton, setShowButton] = useState(false);
   const [authStep, setAuthStep] = useState(0);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setAuthStep(1);
 
-    // Generate ephemeral keypair — required for real zkLogin signing
+    // Fetch current epoch dynamically
+    let maxEpoch = 1137; // fallback
+    try {
+      const epochRes = await fetch('https://fullnode.testnet.sui.io:443', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'suix_getLatestSuiSystemState',
+          params: [],
+          id: 1,
+        }),
+      });
+      const epochData = await epochRes.json();
+      const currentEpoch = Number(epochData.result.epoch);
+      maxEpoch = currentEpoch + 10;
+    } catch (e) {
+      console.warn('Could not fetch epoch, using fallback:', maxEpoch);
+    }
+
     const ephemeralKeypair = new Ed25519Keypair();
     const randomness = generateRandomness();
-    const maxEpoch = 10; // valid for ~10 epochs on testnet
-
-    // Nonce must be derived from keypair — baked into the JWT by Google
     const nonce = generateNonce(ephemeralKeypair.getPublicKey(), maxEpoch, randomness);
 
-    // Store for use in callback + signing
     localStorage.setItem('edge_ephemeral_key', ephemeralKeypair.getSecretKey());
     localStorage.setItem('edge_randomness', randomness.toString());
     localStorage.setItem('edge_max_epoch', maxEpoch.toString());
@@ -100,14 +115,12 @@ export default function Home() {
       `}</style>
 
       <div style={{ maxWidth: 500, width: '100%' }}>
-        {/* Eyebrow tags */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
           {['FESTIVAL MODE DEMO', 'DEVNET'].map((label, i) => (
             <span key={label} style={{ background: i === 0 ? 'rgba(77,162,255,0.12)' : T.tealDim, border: `1px solid ${i === 0 ? 'rgba(77,162,255,0.3)' : T.tealBorder}`, color: i === 0 ? T.blue : T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>{label}</span>
           ))}
         </div>
 
-        {/* Terminal */}
         <div style={{ borderLeft: `2px solid ${T.border}`, paddingLeft: 20, marginBottom: 32 }}>
           {LINES.map((line, i) => (
             <TypewriterLine
@@ -126,7 +139,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Auth */}
         {showButton && authStep === 0 && (
           <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
             <button
@@ -155,7 +167,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Value props */}
         {showButton && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, animation: 'fadeUp 0.5s ease-out 0.1s both' }}>
             {[
