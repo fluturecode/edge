@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { generateNonce, generateRandomness } from '@mysten/sui/zklogin';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -54,7 +56,20 @@ export default function Home() {
 
   const handleLogin = () => {
     setAuthStep(1);
-    const nonce = crypto.randomUUID();
+
+    // Generate ephemeral keypair — required for real zkLogin signing
+    const ephemeralKeypair = new Ed25519Keypair();
+    const randomness = generateRandomness();
+    const maxEpoch = 10; // valid for ~10 epochs on testnet
+
+    // Nonce must be derived from keypair — baked into the JWT by Google
+    const nonce = generateNonce(ephemeralKeypair.getPublicKey(), maxEpoch, randomness);
+
+    // Store for use in callback + signing
+    localStorage.setItem('edge_ephemeral_key', ephemeralKeypair.getSecretKey());
+    localStorage.setItem('edge_randomness', randomness.toString());
+    localStorage.setItem('edge_max_epoch', maxEpoch.toString());
+
     const params = new URLSearchParams({
       client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
       redirect_uri: `${window.location.origin}/auth/callback`,
@@ -62,6 +77,7 @@ export default function Home() {
       scope: 'openid email profile',
       nonce,
     });
+
     setTimeout(() => {
       window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
     }, 800);
