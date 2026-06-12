@@ -24,15 +24,12 @@ export class ExecutionEngine {
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> }
   ): Promise<TransactionOutcome> {
     const validation = PolicyEngine.validate(pass, request);
-
     if (!validation.allowed) {
       return { status: "blocked", reason: validation.reason, auto: false };
     }
-
     if (validation.requiresEscalation) {
       return { status: "escalated", reason: validation.reason, auto: false };
     }
-
     try {
       const tx = this.buildPTB(pass, request);
       const result = await signer.signAndExecute(tx);
@@ -52,7 +49,6 @@ export class ExecutionEngine {
   ): Transaction {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
-
     const packageId = EDGE_PACKAGE_ID[this.network];
 
     tx.moveCall({
@@ -61,6 +57,7 @@ export class ExecutionEngine {
         tx.object(pass.id),
         tx.pure.u64(request.amount),
         tx.pure.string(request.merchant),
+        tx.object('0x6'), // Sui shared Clock object
       ],
     });
 
