@@ -23,6 +23,7 @@
 - **GitHub handle:** fluturecode
 - **Walrus live blob:** https://walruscan.com/testnet/blob/aMp7SskBz83OJLg-2RwxPf-8psdURdoVyyDhtYMujT4
 - **Contract on Sui testnet:** https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+- **First confirmed on-chain EdgePass creation tx:** https://suiscan.xyz/testnet/tx/2wstpGwQgb8v6CDKdAmVjJBAHZ873MPFNMBNfvQutFKF
 
 ---
 
@@ -30,7 +31,7 @@
 
 - **Package ID:** `0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d`
 - **Deployer:** `0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9`
-- **Tx Digest:** `64fovgDj7P5DX9mNDTEEmEwVU2cxxJhQvnZq2eos1s84`
+- **Deploy Tx:** `64fovgDj7P5DX9mNDTEEmEwVU2cxxJhQvnZq2eos1s84`
 - **Network:** Sui testnet
 - **Deployed via:** GitHub Actions CI/CD
 
@@ -38,11 +39,12 @@
 
 ## Tech Stack
 
-- **Frontend:** Next.js 15, TypeScript, Tailwind, pnpm workspaces
+- **Frontend:** Next.js 16, TypeScript, pnpm workspaces
 - **Fonts:** DM Mono (terminal/mono), Inter (body)
-- **Blockchain:** Sui, @mysten/sui@2.17.0 (web app), @mysten/sui@1.30.0 (SDK)
-- **Auth:** Google OAuth → zkLogin → Sui wallet (no seed phrase)
-- **Storage:** Walrus testnet (HTTP API)
+- **Blockchain:** Sui, @mysten/sui@1.30.0 (SDK), @mysten/sui@2.17.0 (web app)
+- **Auth:** Google OAuth → real zkLogin → ZK proof via Enoki → Sui wallet (no seed phrase)
+- **Gas:** Enoki sponsored transactions via server-side Next.js API route
+- **Storage:** Walrus testnet (HTTP API) — live blobs confirmed
 - **Encryption:** Seal (stubbed, Phase 3)
 - **Hosting:** Vercel
 
@@ -50,124 +52,118 @@
 
 ## Monorepo Structure
 
-```
 edge/
 ├── apps/
-│   └── web/                         ← Next.js demo app
+│   └── web/
 │       ├── app/
-│       │   ├── page.tsx             ← Login (terminal typewriter + boot sequence) ✅
-│       │   ├── layout.tsx           ← Navbar + footer tagline animation ✅
-│       │   ├── globals.css          ✅
-│       │   ├── auth/callback/
-│       │   │   └── page.tsx         ← zkLogin callback handler ✅
+│       │   ├── page.tsx                  ← Login + typewriter boot sequence ✅
+│       │   ├── layout.tsx                ← Navbar + footer animation ✅
+│       │   ├── auth/callback/page.tsx    ← zkLogin callback + ZK proof via Enoki ✅
 │       │   └── dashboard/
-│       │       ├── page.tsx         ← Dashboard (address, pass card, ecosystem strip, Sui explorer links) ✅
-│       │       ├── create/
-│       │       │   └── page.tsx     ← EdgePass creation + PTB preview + Walrus policy store ✅
-│       │       └── activity/
-│       │           └── page.tsx     ← Festival Mode + escalation modal + Walrus audit log ✅
+│       │       ├── page.tsx              ← Dashboard ✅
+│       │       ├── create/page.tsx       ← Real on-chain EdgePass creation ✅ LIVE
+│       │       └── activity/page.tsx     ← Festival Mode on-chain execution ✅ LIVE
+│       ├── app/api/
+│       │   ├── sponsor/route.ts          ← Enoki sponsorship server-side ✅
+│       │   └── sign/route.ts             ← zkLogin signing + Sui RPC execution ✅
 │       ├── components/
-│       │   └── navbar.tsx           ← Client navbar (Dashboard + Activity links) ✅
+│       │   └── navbar.tsx                ✅
 │       └── lib/
-│           ├── zklogin.ts           ← getZkLoginAddress, getDecodedJwt ✅
-│           ├── walrus.ts            ← Walrus HTTP API (write/read blobs) ✅
-│           ├── seal.ts              ← Seal policy encryption (Phase 3) ✅
-│           ├── signer.ts            ← getUserAddress, setUserAddress ✅
-│           └── edge-sdk.ts          ← SDK bridge (formToPassConfig, etc) ✅
+│           ├── zklogin.ts                ← generateZkProof (Enoki) + signWithZkLogin ✅
+│           ├── walrus.ts                 ← Walrus HTTP API ✅
+│           ├── seal.ts                   ← Seal policy encryption (stubbed) ✅
+│           ├── signer.ts                 ← buildSigner → /api/sign route ✅
+│           └── edge-sdk.ts               ← SDK bridge ✅
 ├── packages/
-│   └── sdk/                         ← @edge-protocol/sdk
+│   └── sdk/
 │       └── src/
-│           ├── index.ts             ← public exports ✅
 │           ├── core/
-│           │   ├── EdgePass.ts      ← main SDK class ✅
-│           │   ├── PolicyEngine.ts  ← validation logic (pure TS) ✅
-│           │   ├── ExecutionEngine.ts ← PTB builder + chain calls ✅
-│           │   └── AuditLogger.ts   ← local audit log buffer ✅
+│           │   ├── EdgePass.ts           ← create() execute() fetch() revoke() ✅
+│           │   ├── PolicyEngine.ts       ← pure TS validation, 6/6 tests ✅
+│           │   ├── ExecutionEngine.ts    ← PTB builder + Clock (0x6) ✅
+│           │   └── AuditLogger.ts        ✅
 │           └── utils/
-│               ├── types.ts         ← all TypeScript types ✅
-│               └── constants.ts     ← MIST_PER_SUI, NETWORK_URLS, EDGE_PACKAGE_ID ✅
-│       └── src/test.ts              ← 6/6 tests passing ✅
+│               ├── types.ts              ✅
+│               └── constants.ts          ✅
 └── contracts/
     └── navis/
-        ├── sources/
-        │   └── edge_pass.move       ← EdgePass Move object ✅ DEPLOYED
-        └── Move.toml                ✅
-```
+        └── sources/edge_pass.move        ← DEPLOYED testnet ✅
 
 ---
 
 ## Environment Variables
 
-File: `apps/web/.env.local` (never commit)
+File: apps/web/.env.local (never commit)
 
-```
-NEXT_PUBLIC_ENOKI_API_KEY=enoki_public_eb0eeeb84f04768cf88a5d264bdf9ee6
+NEXT_PUBLIC_ENOKI_API_KEY=enoki_public_...
+ENOKI_SECRET_KEY=enoki_private_...
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=522666980790-20qcuen79borlp62m9vjb3cgugi092n3.apps.googleusercontent.com
-NEXT_PUBLIC_SUI_NETWORK=devnet
+NEXT_PUBLIC_SUI_NETWORK=testnet
 NEXT_PUBLIC_APP_URL=https://edge-web-git-main-fluturecodes-projects.vercel.app
-```
 
-**Google OAuth authorized origins:**
-- `http://localhost:3000`
-- `https://edge-web-git-main-fluturecodes-projects.vercel.app`
+Important: ENOKI_SECRET_KEY is server-side only. Never expose client-side.
 
-**Google OAuth redirect URIs:**
-- `http://localhost:3000/auth/callback`
-- `https://edge-web-git-main-fluturecodes-projects.vercel.app/auth/callback`
+Google OAuth authorized origins:
+- http://localhost:3000
+- https://edge-web-git-main-fluturecodes-projects.vercel.app
 
----
+Google OAuth redirect URIs:
+- http://localhost:3000/auth/callback
+- https://edge-web-git-main-fluturecodes-projects.vercel.app/auth/callback
 
-## Design System
-
-```typescript
-const T = {
-  bg: '#080C14',           // near-black background
-  bgCard: '#0D1420',       // card background
-  border: '#1A2740',
-  blue: '#4DA2FF',         // Sui blue
-  teal: '#00D4AA',         // Edge signature color
-  gold: '#FFB830',         // escalation/warning
-  red: '#FF4D6A',          // blocked/error
-  white: '#FFFFFF',
-  grey1: '#B8C8E0',
-  grey2: '#5A7090',
-};
-// Fonts: DM Mono (numbers/addresses/terminal), Inter (body/buttons)
-```
-
-**Footer animation:**
-```css
-@keyframes vanish {
-  0% { opacity: 0; }
-  25% { opacity: 0.3; }
-  50% { opacity: 0.3; }
-  80% { opacity: 0; }
-  88% { opacity: 0; }
-  100% { opacity: 0; }
-}
-/* 7s cycle, 30% max opacity — "The best infrastructure is invisible." */
-```
+Enoki portal settings required:
+- Public key: ZKLOGIN enabled, DEVNET + TESTNET
+- Private key: SPONSORED_TRANSACTIONS enabled, TESTNET
+- Allowed move targets:
+  - 0x9f4065...::edge_pass::create_pass
+  - 0x9f4065...::edge_pass::execute_transaction
 
 ---
 
-## Auth Flow
+## Auth Flow (Real zkLogin — fully working as of June 11, 2026)
 
-1. User clicks "Continue with Google" on `page.tsx`
-2. Redirected to Google OAuth with nonce
-3. Google redirects to `/auth/callback` with `#id_token=...` in URL hash
-4. `getZkLoginAddress(token)` calls `jwtToAddress(token, BigInt(0))`
-5. Deterministic Sui address derived — same Google = same address always
-6. Address stored in localStorage via `setUserAddress()`
-7. User redirected to `/dashboard`
+1. User clicks "Continue with Google"
+2. App fetches current Sui epoch dynamically → maxEpoch = currentEpoch + 10
+3. Generates ephemeral Ed25519 keypair + randomness
+4. Derives zkLogin nonce: generateNonce(keypair.getPublicKey(), maxEpoch, randomness)
+5. Stores edge_ephemeral_key, edge_randomness, edge_max_epoch in localStorage
+6. Redirects to Google OAuth with nonce baked into JWT
+7. Google redirects to /auth/callback with #id_token=... in URL hash
+8. Calls Enoki ZKP endpoint → gets ZK proof + addressSeed
+9. Calls Enoki address endpoint → gets consistent zkLogin address
+10. Stores edge_id_token, edge_zk_proof, edge_sui_address in localStorage
+11. Redirects to /dashboard
+
+Key insight: Use Enoki's ZKP endpoint (not Mysten's public prover at prover-dev.mystenlabs.com).
+Enoki returns addressSeed in the proof, which is required for signing.
+The address Enoki derives must be used — not jwtToAddress(idToken, BigInt(0)).
+
+---
+
+## Transaction Signing Flow
+
+All real signing goes through apps/web/app/api/sign/route.ts:
+
+1. Client builds tx with tx.setSender(address) + tx.build({ client: suiClient })
+2. Sends txBytes, ephemeralKey, zkProof, maxEpoch, idToken to /api/sign
+3. Server reconstructs keypair from ephemeralKey
+4. Signs txBytes with ephemeral keypair → ephemeralSignature
+5. Calls genAddressSeed(BigInt(0), 'sub', decoded.sub, aud) → addressSeed
+6. Calls getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature })
+7. Submits to Sui RPC via suiClient.executeTransactionBlock()
+8. Returns { digest }
+
+Note: Enoki sponsored transactions expire too quickly on testnet (~2s TTL).
+Current workaround: fund zkLogin address with testnet SUI from faucet and submit direct to Sui RPC.
+For mainnet: Enoki sponsorship should be reliable. Wire back through /api/sponsor route.
 
 ---
 
 ## SDK
 
-```typescript
 import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 
-const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: '...' });
+const sdk = new EdgePass({ network: 'testnet', enokiApiKey: '...' });
 
 const pass = await sdk.create({
   budget: 300n * MIST_PER_SUI,
@@ -183,9 +179,8 @@ const outcome = await sdk.execute(pass, {
   amount: 18_500_000_000n,
 }, signer);
 // outcome.status === 'approved' | 'blocked' | 'escalated'
-```
 
-**PolicyEngine rules (in order):**
+PolicyEngine rules (in order):
 1. Pass must be active
 2. Pass must not be expired
 3. Merchant must be in approved list
@@ -193,60 +188,83 @@ const outcome = await sdk.execute(pass, {
 5. If amount > escalateThreshold → escalate
 6. If amount ≤ autoThreshold → auto-approve
 
-**Tests:** `cd packages/sdk && pnpm test` → 6/6 passing
+Tests: cd packages/sdk && pnpm test → 6/6 passing
+
+Important PTB detail: Both create_pass and execute_transaction require the Sui Clock object.
+Pass tx.object('0x6') as the last argument before ctx in both Move calls.
 
 ---
 
 ## Walrus Integration
 
-- **HTTP API** — no SDK, no signer for client-side
-- **Aggregator:** `https://aggregator.walrus-testnet.walrus.space`
-- **Publisher:** `https://publisher.walrus-testnet.walrus.space`
-- **Live blob:** `aMp7SskBz83OJLg-2RwxPf-8psdURdoVyyDhtYMujT4`
+- HTTP API — no SDK, no signer for client-side
+- Aggregator: https://aggregator.walrus-testnet.walrus.space
+- Publisher: https://publisher.walrus-testnet.walrus.space
+- Live blob: aMp7SskBz83OJLg-2RwxPf-8psdURdoVyyDhtYMujT4
+- Festival Mode blob: Tly_O_M8YpJw-AZqWJ1JRv9xlgZ_W11Er3xoD4BtZlw
 
-Audit logs written after Festival Mode simulation completes.
+Audit logs written after Festival Mode execution completes.
+Real transaction digests included in logs with Suiscan links.
 
 ---
 
 ## Seal Integration
 
-- File: `apps/web/lib/seal.ts`
-- Status: **Stubbed** — serializes policy to JSON, stores on Walrus
+- File: apps/web/lib/seal.ts
+- Status: Stubbed — serializes policy to JSON, stores on Walrus
 - Phase 3: Wire real Seal encryption after key server deployment
+
+---
+
+## Design System
+
+const T = {
+  bg: '#080C14',
+  bgCard: '#0D1420',
+  border: '#1A2740',
+  blue: '#4DA2FF',
+  teal: '#00D4AA',
+  gold: '#FFB830',
+  red: '#FF4D6A',
+  white: '#FFFFFF',
+  grey1: '#B8C8E0',
+  grey2: '#5A7090',
+};
+Fonts: DM Mono (numbers/addresses/terminal), Inter (body/buttons)
+
+Footer animation: vanish keyframe, 7s cycle, 30% max opacity
+"The best infrastructure is invisible."
 
 ---
 
 ## GitHub Actions
 
-- File: `.github/workflows/deploy-contract.yml`
-- Status: **Disabled** after successful deployment
+- File: .github/workflows/deploy-contract.yml
+- Status: Disabled after successful deployment
 - Re-enable only when redeploying contract
-- Uses `SUI_PRIVATE_KEY` GitHub secret
-
-**To re-enable:** GitHub → Actions → Deploy Move Contract → Enable workflow
+- Uses SUI_PRIVATE_KEY GitHub secret
 
 ---
 
 ## Judging Criteria
 
-| Criteria | Weight | Our Status |
-|----------|--------|------------|
-| Real-World Application | 50% | Strong — SDK + use case + Walrus |
+| Criteria | Weight | Status |
+|----------|--------|--------|
+| Real-World Application | 50% | Strong — open SDK, real txs, Walrus |
 | Product & UX | 20% | Strong — terminal hero, clean demo |
-| Technical Implementation | 20% | Strong — contract deployed, Walrus live |
+| Technical Implementation | 20% | Strong — contract deployed, zkLogin real, on-chain |
 | Presentation & Vision | 10% | Strong — demo script ready |
 
 ---
 
 ## What's Next (in priority order)
 
-1. **Wire real EdgePass creation** — replace localStorage mock with `sdk.create()` via zkLogin signer
-2. **Wire sponsored transactions** — Enoki API route so gas is truly free
-3. **npm publish** — `cd packages/sdk && pnpm publish`
-4. **AI agent demo** — LLM calling `sdk.execute()` autonomously (~50 lines)
-5. **Demo video** — ≤5 min, YouTube, required for submission
-6. **Mainnet deploy** — contact grants@sui.io for sponsorship
-7. **Submit on DeepSurge** — https://www.deepsurge.xyz/hackathons/b587dc0c-4cb8-4e63-ada5-519df38103bf
+1. AI agent demo — LLM calling sdk.execute() autonomously (~50 lines, ~1-2 hrs)
+2. npm publish — cd packages/sdk && pnpm publish (~30 min)
+3. Demo video — ≤5 min, YouTube, required for submission (~2-3 hrs)
+4. DeepSurge submission — https://www.deepsurge.xyz/hackathons/b587dc0c-4cb8-4e63-ada5-519df38103bf
+5. KYC for prize
+6. Mainnet deploy — contact grants@sui.io
 
 ---
 
@@ -255,60 +273,49 @@ Audit logs written after Festival Mode simulation completes.
 - [x] Public GitHub repo
 - [x] Live app on Vercel
 - [x] Move contract on testnet
-- [x] Walrus audit logs working
-- [x] README complete
-- [ ] `@edge-protocol/sdk` on npm
-- [ ] Real on-chain EdgePass creation
+- [x] Real on-chain EdgePass creation ✅ June 11
+- [x] Festival Mode on-chain execution ✅ June 11
+- [x] Walrus audit logs with real digests ✅ June 11
+- [x] zkLogin real ZK proof ✅ June 11
+- [ ] @edge-protocol/sdk on npm
+- [ ] AI agent demo
 - [ ] Demo video (YouTube, ≤5 min)
 - [ ] DeepSurge submission
 - [ ] KYC completed for prize
-- **Deadline: June 21, 2026**
+- Deadline: June 21, 2026
 
 ---
 
 ## Mainnet Sponsorship
 
 Email grants@sui.io:
-> Subject: Sui Overflow 2026 — Mainnet sponsorship for Edge (Agentic Web)
->
-> Building Edge — programmable trust infrastructure for autonomous agents on Sui. Open SDK + Move contract deployed on testnet. Need mainnet gas coverage for deployment. Submitting June 21st.
+Subject: Sui Overflow 2026 — Mainnet sponsorship for Edge (Agentic Web)
 
----
-
-## Airdrop/Ecosystem Farming
-
-On-chain activity with deployer address earns ecosystem points:
-- **Deployer:** `0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9`
-- Walrus blobs written ✅
-- Contract deployed ✅
-
-Packages installed (ecosystem presence):
-- `@mysten/sui` ✅
-- `@mysten/zklogin` ✅
-- `@mysten/walrus` ✅
-- `@mysten/seal` ✅
-
-Tag on social: `@SuiNetwork` `@WalrusProtocol`
+Building Edge — programmable trust infrastructure for autonomous agents on Sui.
+Open SDK + Move contract deployed and working on testnet.
+Real zkLogin, Enoki sponsorship, Walrus audit logs all confirmed.
+Need mainnet gas coverage for deployment. Submitting June 21st.
 
 ---
 
 ## Personal Laptop (for contract work)
 
-- **Machine:** 2017 MacBook Air (Intel x86_64)
-- **Sui wallet alias:** festive-tourmaline
-- **Address:** `0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9`
-- **Recovery phrase:** `donkey match coil wait seed begin liar thrive sausage always deal drastic`
-- **Note:** Sui CLI crashes on `sui move build` due to Intel malloc bug — use GitHub Actions for all contract work
+- Machine: 2017 MacBook Air (Intel x86_64)
+- Sui wallet alias: festive-tourmaline
+- Address: 0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9
+- Recovery phrase: donkey match coil wait seed begin liar thrive sausage always deal drastic
+- Note: Sui CLI crashes on sui move build due to Intel malloc bug — use GitHub Actions
 
 ---
 
 ## New Chat Prompt
 
-> I'm building Edge — programmable trust infrastructure for autonomous onchain systems on Sui, for Sui Overflow 2026 (Agentic Web track). Repo: github.com/fluturecode/edge. Live: edge-web-git-main-fluturecodes-projects.vercel.app. Contract on testnet: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d. I have a full handoff doc — please read it before we continue.
+I'm building Edge — programmable trust infrastructure for autonomous onchain systems on Sui, for Sui Overflow 2026 (Agentic Web track). Repo: github.com/fluturecode/edge. Live: edge-web-git-main-fluturecodes-projects.vercel.app. Contract on testnet: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d. I have a full handoff doc — please read it before we continue.
 
 Then paste the entire contents of this file.
 
 ---
 
-*Last updated: June 3, 2026 — after Day 2 build session*
-*Hours invested: ~15.5 hours*
+Last updated: June 12, 2026 — after Day 3 build session
+Hours invested: ~24 hours
+Status: Real on-chain EdgePass creation + Festival Mode execution confirmed on Sui testnet

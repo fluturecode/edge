@@ -14,7 +14,6 @@ export function NavBar() {
       borderBottom: '1px solid #1A2740', background: '#080C14',
       position: 'sticky', top: 0, zIndex: 50, gap: 12,
     }}>
-      {/* Logo */}
       <div
         onClick={() => router.push(isDashboard ? '/dashboard' : '/')}
         style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
@@ -36,12 +35,12 @@ export function NavBar() {
         </div>
       </div>
 
-      {/* Nav links — dashboard only */}
       {isDashboard && (
         <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
           {[
             { label: 'Dashboard', path: '/dashboard' },
             { label: 'Activity', path: '/dashboard/activity' },
+            { label: 'Agent', path: '/dashboard/agent' },
           ].map(link => (
             <button
               key={link.path}
@@ -61,10 +60,9 @@ export function NavBar() {
         </div>
       )}
 
-      {/* Network pill */}
       <div style={{ background: '#0D1420', border: '1px solid #1A2740', borderRadius: 8, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D4AA', boxShadow: '0 0 6px #00D4AA', display: 'inline-block' }}/>
-        <span style={{ fontSize: 11, color: '#5A7090', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>DEVNET</span>
+        <span style={{ fontSize: 11, color: '#5A7090', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>TESTNET</span>
       </div>
     </nav>
   );
