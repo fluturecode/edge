@@ -16,13 +16,19 @@ const T = {
   white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
 
-const TRANSACTIONS = [
-  { id: 1, merchant: 'Shuttle Express', amount: 18.50, status: 'approved', auto: true, digest: null as string | null, note: 'Auto-approved · under threshold' },
-  { id: 2, merchant: 'Hydra Bar', amount: 32.00, status: 'approved', auto: true, digest: null as string | null, note: 'Auto-approved · trusted merchant' },
-  { id: 3, merchant: 'Stage Access VIP', amount: 75.00, status: 'approved', auto: true, digest: null as string | null, note: 'Auto-approved · within limits' },
-  { id: 4, merchant: 'ShadyTokens.xyz', amount: 0.01, status: 'blocked', auto: true, digest: null as string | null, note: 'Blocked · unlisted merchant' },
-  { id: 5, merchant: 'Artist Meet & Greet', amount: 149.00, status: 'escalated', auto: false, digest: null as string | null, note: 'Escalated · exceeds $100 threshold' },
-];
+interface PassPolicy {
+  budget: number;
+  autoThreshold: number;
+  escalateThreshold: number;
+  merchants: string[];
+}
+
+const DEFAULT_POLICY: PassPolicy = {
+  budget: 300,
+  autoThreshold: 50,
+  escalateThreshold: 100,
+  merchants: ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'],
+};
 
 interface TxItem {
   id: number;
@@ -51,7 +57,7 @@ function Pill({ status }: { status: string }) {
   return <Tag label={label} color={color} />;
 }
 
-function EscalationModal({ tx, onApprove, onDeny }: { tx: TxItem; onApprove: () => void; onDeny: () => void }) {
+function EscalationModal({ tx, policy, onApprove, onDeny }: { tx: TxItem; policy: PassPolicy; onApprove: () => void; onDeny: () => void }) {
   const [done, setDone] = useState(false);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,12,20,0.92)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}>
@@ -60,7 +66,12 @@ function EscalationModal({ tx, onApprove, onDeny }: { tx: TxItem; onApprove: () 
         <h2 style={{ fontFamily: 'DM Mono, monospace', fontSize: 16, color: T.white, fontWeight: 700, margin: '14px 0 6px' }}>Transaction exceeds threshold</h2>
         <p style={{ fontSize: 12, color: T.grey2, margin: '0 0 20px', fontFamily: 'Inter, sans-serif' }}>This transaction requires your explicit approval before execution.</p>
         <div style={{ background: T.bg, borderRadius: 12, padding: 16, marginBottom: 16, border: '1px solid ' + T.border }}>
-          {[['Merchant', tx.merchant, T.white], ['Amount', '$' + tx.amount.toFixed(2), T.gold], ['Policy limit', '$100.00', T.grey1], ['Action', 'Manual approval required', T.grey1]].map(([k, v, c]) => (
+          {[
+            ['Merchant', tx.merchant, T.white],
+            ['Amount', '$' + tx.amount.toFixed(2), T.gold],
+            ['Escalate threshold', '$' + policy.escalateThreshold + '.00', T.grey1],
+            ['Action', 'Manual approval required', T.grey1],
+          ].map(([k, v, c]) => (
             <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 13 }}>
               <span style={{ color: T.grey2, fontFamily: 'Inter, sans-serif' }}>{k}</span>
               <span style={{ color: c as string, fontFamily: k === 'Amount' ? 'DM Mono, monospace' : 'Inter, sans-serif', fontWeight: k === 'Amount' ? 700 : 400, fontSize: k === 'Amount' ? 17 : 13 }}>{v}</span>
@@ -122,6 +133,8 @@ function TxRow({ tx }: { tx: TxItem }) {
 
 export default function Activity() {
   const router = useRouter();
+  const [policy, setPolicy] = useState<PassPolicy>(DEFAULT_POLICY);
+  const [transactions, setTransactions] = useState<TxItem[]>([]);
   const [shown, setShown] = useState<TxItem[]>([]);
   const [processing, setProcessing] = useState<number | null>(null);
   const [idx, setIdx] = useState(0);
@@ -135,9 +148,41 @@ export default function Activity() {
   const ref = useRef(false);
   const autoRef = useRef(false);
 
-  const budget = 300;
+  // Load policy from localStorage on mount
+  useEffect(() => {
+    const passes = JSON.parse(localStorage.getItem('edge_passes') || '[]');
+    if (passes.length > 0) {
+      const latest = passes[0];
+      const p: PassPolicy = {
+        budget: latest.budget || 300,
+        autoThreshold: latest.autoThreshold || 50,
+        escalateThreshold: latest.escalateThreshold || 100,
+        merchants: latest.merchants || DEFAULT_POLICY.merchants,
+      };
+      setPolicy(p);
+
+      // Build transactions dynamically based on policy
+      const txs: TxItem[] = [
+        { id: 1, merchant: p.merchants[0] || 'Shuttle Express', amount: Math.min(p.autoThreshold * 0.4, 20), status: 'approved', auto: true, digest: null, note: 'Auto-approved · under threshold' },
+        { id: 2, merchant: p.merchants[2] || 'Hydra Bar', amount: Math.min(p.autoThreshold * 0.65, 32), status: 'approved', auto: true, digest: null, note: 'Auto-approved · trusted merchant' },
+        { id: 3, merchant: p.merchants[3] || 'Stage Access VIP', amount: Math.min(p.escalateThreshold * 0.75, 75), status: 'approved', auto: true, digest: null, note: 'Auto-approved · within limits' },
+        { id: 4, merchant: 'ShadyTokens.xyz', amount: 0.01, status: 'blocked', auto: true, digest: null, note: 'Blocked · unlisted merchant' },
+        { id: 5, merchant: p.merchants[3] || 'Artist Meet & Greet', amount: Math.min(p.escalateThreshold * 1.5, 149), status: 'escalated', auto: false, digest: null, note: 'Escalated · exceeds $' + p.escalateThreshold + ' threshold' },
+      ];
+      setTransactions(txs);
+    } else {
+      setTransactions([
+        { id: 1, merchant: 'Shuttle Express', amount: 18.50, status: 'approved', auto: true, digest: null, note: 'Auto-approved · under threshold' },
+        { id: 2, merchant: 'Hydra Bar', amount: 32.00, status: 'approved', auto: true, digest: null, note: 'Auto-approved · trusted merchant' },
+        { id: 3, merchant: 'Stage Access VIP', amount: 75.00, status: 'approved', auto: true, digest: null, note: 'Auto-approved · within limits' },
+        { id: 4, merchant: 'ShadyTokens.xyz', amount: 0.01, status: 'blocked', auto: true, digest: null, note: 'Blocked · unlisted merchant' },
+        { id: 5, merchant: 'Artist Meet & Greet', amount: 149.00, status: 'escalated', auto: false, digest: null, note: 'Escalated · exceeds $100 threshold' },
+      ]);
+    }
+  }, []);
+
   const spent = shown.filter(t => t.status === 'approved').reduce((s, t) => s + t.amount, 0);
-  const pct = Math.min((spent / budget) * 100, 100);
+  const pct = Math.min((spent / policy.budget) * 100, 100);
   const barColor = pct > 80 ? T.red : pct > 55 ? T.gold : T.teal;
 
   useEffect(() => {
@@ -162,11 +207,11 @@ export default function Activity() {
   }, [done]);
 
   const processOne = async (currentIdx: number) => {
-    if (ref.current) return;
+    if (ref.current || transactions.length === 0) return;
     ref.current = true;
     setRunning(true);
     setExecError(null);
-    const tx = TRANSACTIONS[currentIdx];
+    const tx = transactions[currentIdx];
     setProcessing(tx.id);
 
     let resultTx: TxItem = { ...tx };
@@ -208,12 +253,12 @@ export default function Activity() {
       setIdx(currentIdx + 1);
       ref.current = false;
       setRunning(false);
-      if (currentIdx + 1 >= TRANSACTIONS.length) { setDone(true); setAutoMode(false); return; }
+      if (currentIdx + 1 >= transactions.length) { setDone(true); setAutoMode(false); return; }
       if (autoRef.current) { await new Promise(r => setTimeout(r, 500)); processOne(currentIdx + 1); }
     }
   };
 
-  const next = () => { if (!ref.current && idx < TRANSACTIONS.length && !done) processOne(idx); };
+  const next = () => { if (!ref.current && idx < transactions.length && !done) processOne(idx); };
   const runAll = () => { if (ref.current || done) return; autoRef.current = true; setAutoMode(true); processOne(idx); };
 
   const approve = () => {
@@ -222,7 +267,7 @@ export default function Activity() {
     setIdx(idx + 1);
     ref.current = false;
     setRunning(false);
-    if (idx + 1 >= TRANSACTIONS.length) setDone(true);
+    if (idx + 1 >= transactions.length) setDone(true);
   };
 
   const deny = () => {
@@ -231,7 +276,7 @@ export default function Activity() {
     setIdx(idx + 1);
     ref.current = false;
     setRunning(false);
-    if (idx + 1 >= TRANSACTIONS.length) setDone(true);
+    if (idx + 1 >= transactions.length) setDone(true);
   };
 
   const reset = () => {
@@ -241,23 +286,27 @@ export default function Activity() {
     ref.current = false; autoRef.current = false;
   };
 
+  if (transactions.length === 0) return null;
+
   return (
     <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
-      {modal && <EscalationModal tx={modal} onApprove={approve} onDeny={deny} />}
+      {modal && <EscalationModal tx={modal} policy={policy} onApprove={approve} onDeny={deny} />}
 
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 8, padding: 0, display: 'block' }}>← back</button>
+            <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 8, padding: 0, display: 'block' }}>back</button>
             <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: 0 }}>Activity</h1>
-            <p style={{ color: T.grey2, fontSize: 13, margin: '4px 0 0', fontFamily: 'Inter, sans-serif' }}>Festival Mode · autonomous execution</p>
+            <p style={{ color: T.grey2, fontSize: 13, margin: '4px 0 0', fontFamily: 'Inter, sans-serif' }}>
+              Festival Mode · auto: &lt;${policy.autoThreshold} · escalate: &gt;${policy.escalateThreshold}
+            </p>
           </div>
           {done && (
             <button onClick={reset} style={{ background: 'none', border: '1px solid ' + T.border, borderRadius: 8, padding: '8px 14px', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.color = T.teal; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey2; }}>
-              ↺ reset
+              reset
             </button>
           )}
         </div>
@@ -265,7 +314,7 @@ export default function Activity() {
         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 4 }}>
             <span style={{ fontSize: 11, color: T.grey2, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Budget</span>
-            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.white }}>${spent.toFixed(2)} <span style={{ color: T.grey2 }}>/ ${budget}.00</span></span>
+            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.white }}>${spent.toFixed(2)} <span style={{ color: T.grey2 }}>/ ${policy.budget}.00</span></span>
           </div>
           <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', background: barColor, borderRadius: 2, width: pct + '%', transition: 'width 0.6s ease-out, background 0.4s' }} />
@@ -291,7 +340,7 @@ export default function Activity() {
             <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Transaction Log</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {running && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
-              <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{shown.length}/{TRANSACTIONS.length}</span>
+              <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{shown.length}/{transactions.length}</span>
             </div>
           </div>
 
@@ -306,11 +355,11 @@ export default function Activity() {
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.blue, boxShadow: '0 0 8px ' + T.blue, flexShrink: 0, display: 'inline-block', animation: 'pulse 0.8s ease-in-out infinite' }} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 14, color: T.white, fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>{TRANSACTIONS.find(t => t.id === processing)?.merchant}</span>
-                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: T.white, fontWeight: 600 }}>${TRANSACTIONS.find(t => t.id === processing)?.amount.toFixed(2)}</span>
+                  <span style={{ fontSize: 14, color: T.white, fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>{transactions.find(t => t.id === processing)?.merchant}</span>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: T.white, fontWeight: 600 }}>${transactions.find(t => t.id === processing)?.amount.toFixed(2)}</span>
                 </div>
                 <span style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace' }}>
-                  {TRANSACTIONS.find(t => t.id === processing)?.status === 'approved' ? 'executing on-chain via EdgePass...' : 'validating against EdgePass policy...'}
+                  {transactions.find(t => t.id === processing)?.status === 'approved' ? 'executing on-chain via EdgePass...' : 'validating against EdgePass policy...'}
                 </span>
               </div>
             </div>
@@ -331,7 +380,7 @@ export default function Activity() {
               style={{ padding: 13, borderRadius: 12, border: '1px solid ' + (running ? T.border : T.borderHover), background: 'transparent', color: running ? T.grey2 : T.grey1, fontSize: 13, fontWeight: 600, cursor: running ? 'default' : 'pointer', transition: 'all 0.2s', fontFamily: 'DM Mono, monospace' }}
               onMouseEnter={e => { if (!running) { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.color = T.blue; } }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = running ? T.border : T.borderHover; e.currentTarget.style.color = running ? T.grey2 : T.grey1; }}>
-              {running ? '$ processing...' : '$ next (' + (idx + 1) + '/' + TRANSACTIONS.length + ')'}
+              {running ? '$ processing...' : '$ next (' + (idx + 1) + '/' + transactions.length + ')'}
             </button>
             <button onClick={runAll} disabled={running || autoMode || !!modal}
               style={{ padding: 13, borderRadius: 12, border: '1px solid ' + (running || autoMode ? T.border : 'transparent'), background: running || autoMode ? T.bgCard : T.blue, color: running || autoMode ? T.grey2 : T.white, fontSize: 13, fontWeight: 700, cursor: running || autoMode ? 'default' : 'pointer', transition: 'all 0.2s', fontFamily: 'Inter, sans-serif' }}>
@@ -358,7 +407,7 @@ export default function Activity() {
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
                   <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
-                    → view on Walrus explorer ↗
+                    view on Walrus explorer
                   </a>
                 </div>
               )}

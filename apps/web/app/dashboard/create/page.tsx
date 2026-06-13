@@ -13,44 +13,60 @@ const T = {
   white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
 
-const MERCHANTS = ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'];
+const ALL_MERCHANTS = ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'];
 const PACKAGE_ID = '0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d';
-
-const LOG_STEPS = [
-  { prefix: '$', color: T.grey2, text: 'edge create-pass --network testnet', delay: 0 },
-  { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
-  { prefix: '✓', color: T.teal, text: 'Enoki sponsorship confirmed · gas covered', delay: 800 },
-  { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
-  { prefix: '→', color: T.blue, text: 'navis::edge_pass::create_pass', delay: 1600, indent: true },
-  { prefix: '→', color: T.grey2, text: 'budget: 300,000,000,000 MIST', delay: 1850, indent: true },
-  { prefix: '→', color: T.grey2, text: 'auto_threshold: 50,000,000,000 MIST', delay: 2050, indent: true },
-  { prefix: '→', color: T.grey2, text: 'escalate_threshold: 100,000,000,000 MIST', delay: 2250, indent: true },
-  { prefix: '→', color: T.grey2, text: 'expiry: 172,800,000ms · 5 merchants', delay: 2450, indent: true },
-  { prefix: '✓', color: T.teal, text: 'PTB constructed · 2 transactions', delay: 2800 },
-  { prefix: '$', color: T.grey1, text: 'submitting to Sui testnet...', delay: 3200 },
-];
+const EXPIRY_OPTIONS = [24, 48, 72, 168];
 
 export default function CreatePass() {
   const router = useRouter();
-  const [form] = useState({
-    budget: 300,
-    autoThreshold: 50,
-    escalateThreshold: 100,
-    expiry: 48,
-    merchants: MERCHANTS,
-  });
+
+  const [budget, setBudget] = useState<number | ''>(300);
+  const [autoThreshold, setAutoThreshold] = useState<number | ''>(50);
+  const [escalateThreshold, setEscalateThreshold] = useState<number | ''>(100);
+  const [expiry, setExpiry] = useState(48);
+  const [selectedMerchants, setSelectedMerchants] = useState<string[]>([...ALL_MERCHANTS]);
+
   const [state, setState] = useState<'idle' | 'signing' | 'deploying' | 'storing' | 'done' | 'error'>('idle');
   const [visibleLines, setVisibleLines] = useState<number[]>([]);
   const [txDigest, setTxDigest] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const budgetNum = Number(budget) || 0;
+  const autoNum = Number(autoThreshold) || 0;
+  const escalateNum = Number(escalateThreshold) || 0;
+
+  const toggleMerchant = (m: string) => {
+    setSelectedMerchants(prev =>
+      prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]
+    );
+  };
+
+  const logSteps = [
+    { prefix: '$', color: T.grey2, text: 'edge create-pass --network testnet', delay: 0 },
+    { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
+    { prefix: '✓', color: T.teal, text: 'Enoki sponsorship confirmed · gas covered', delay: 800 },
+    { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
+    { prefix: '→', color: T.blue, text: 'navis::edge_pass::create_pass', delay: 1600, indent: true },
+    { prefix: '→', color: T.grey2, text: 'budget: ' + (budgetNum * 1_000_000_000) + ' MIST', delay: 1850, indent: true },
+    { prefix: '→', color: T.grey2, text: 'auto_threshold: ' + (autoNum * 1_000_000_000) + ' MIST', delay: 2050, indent: true },
+    { prefix: '→', color: T.grey2, text: 'escalate_threshold: ' + (escalateNum * 1_000_000_000) + ' MIST', delay: 2250, indent: true },
+    { prefix: '→', color: T.grey2, text: 'expiry: ' + (expiry * 3_600_000) + 'ms · ' + selectedMerchants.length + ' merchants', delay: 2450, indent: true },
+    { prefix: '✓', color: T.teal, text: 'PTB constructed · 2 transactions', delay: 2800 },
+    { prefix: '$', color: T.grey1, text: 'submitting to Sui testnet...', delay: 3200 },
+  ];
+
   const handleCreate = async () => {
-    console.log('handleCreate fired');
     if (state !== 'idle') return;
+    if (selectedMerchants.length === 0) { setErrorMsg('Select at least one merchant'); setState('error'); return; }
+    if (autoNum >= escalateNum) { setErrorMsg('Auto-approve must be less than escalate threshold'); setState('error'); return; }
+    if (escalateNum > budgetNum) { setErrorMsg('Escalate threshold cannot exceed budget'); setState('error'); return; }
+    if (budgetNum <= 0) { setErrorMsg('Budget must be greater than 0'); setState('error'); return; }
+
     setState('signing');
     setVisibleLines([]);
+    setErrorMsg(null);
 
-    LOG_STEPS.forEach((step, i) => {
+    logSteps.forEach((step, i) => {
       setTimeout(() => {
         setVisibleLines(prev => [...prev, i]);
         if (i === 3) setState('deploying');
@@ -58,34 +74,22 @@ export default function CreatePass() {
     });
 
     try {
-      console.log('try block entered');
-      console.log('API key:', process.env.NEXT_PUBLIC_ENOKI_API_KEY);
-
       const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-      console.log('signer built');
-
-      const sdk = new EdgePass({
-        network: 'testnet',
-        enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY!,
-      });
-      console.log('sdk built');
-
+      const sdk = new EdgePass({ network: 'testnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
       const owner = getUserAddress();
-      console.log('owner:', owner);
       if (!owner) throw new Error('Not authenticated');
 
-      console.log('calling sdk.create...');
       const pass = await sdk.create({
-        budget:            BigInt(form.budget) * MIST_PER_SUI,
-        autoThreshold:     BigInt(form.autoThreshold) * MIST_PER_SUI,
-        escalateThreshold: BigInt(form.escalateThreshold) * MIST_PER_SUI,
-        approvedMerchants: form.merchants,
-        expiryMs:          form.expiry * 60 * 60 * 1000,
+        budget:            BigInt(budgetNum) * MIST_PER_SUI,
+        autoThreshold:     BigInt(autoNum) * MIST_PER_SUI,
+        escalateThreshold: BigInt(escalateNum) * MIST_PER_SUI,
+        approvedMerchants: selectedMerchants,
+        expiryMs:          expiry * 60 * 60 * 1000,
         owner,
       }, signer);
 
       setTxDigest(pass.id);
-      setVisibleLines(prev => [...prev, LOG_STEPS.length]);
+      setVisibleLines(prev => [...prev, logSteps.length]);
       setState('storing');
 
       try {
@@ -93,13 +97,13 @@ export default function CreatePass() {
         await storeEncryptedPolicy({
           passId: pass.id,
           owner,
-          approvedMerchants: form.merchants,
-          budget: form.budget,
-          autoThreshold: form.autoThreshold,
-          escalateThreshold: form.escalateThreshold,
+          approvedMerchants: selectedMerchants,
+          budget: budgetNum,
+          autoThreshold: autoNum,
+          escalateThreshold: escalateNum,
           createdAt: Date.now(),
         });
-        setVisibleLines(prev => [...prev, LOG_STEPS.length + 1]);
+        setVisibleLines(prev => [...prev, logSteps.length + 1]);
       } catch (e) {
         console.error('Seal store failed:', e);
       }
@@ -107,7 +111,8 @@ export default function CreatePass() {
       const existing = JSON.parse(localStorage.getItem('edge_passes') || '[]');
       localStorage.setItem('edge_pass_id', pass.id);
       localStorage.setItem('edge_passes', JSON.stringify([{
-        ...form,
+        budget: budgetNum, autoThreshold: autoNum, escalateThreshold: escalateNum, expiry,
+        merchants: selectedMerchants,
         id: pass.id,
         packageId: PACKAGE_ID,
         network: 'testnet',
@@ -128,22 +133,26 @@ export default function CreatePass() {
   };
 
   const isRunning = state === 'signing' || state === 'deploying' || state === 'storing';
-  const showPTB = state === 'idle';
+  const showForm = state === 'idle' || state === 'error';
   const showLog = state !== 'idle';
 
-  const btnLabel = {
-    idle: 'Create EdgePass on Sui',
-    signing: '$ signing with zkLogin...',
-    deploying: '$ deploying Move object...',
-    storing: '$ storing policy on Walrus...',
-    done: '✓ EdgePass minted on-chain',
-    error: '✗ failed — try again',
-  }[state];
+  const inputStyle: React.CSSProperties = {
+    background: T.bgCard,
+    border: '1px solid ' + T.border,
+    borderRadius: 10,
+    padding: '11px 14px',
+    color: T.white,
+    fontFamily: 'DM Mono, monospace',
+    fontSize: 14,
+    width: '100%',
+    outline: 'none',
+    boxSizing: 'border-box',
+  };
 
   const btnStyle: React.CSSProperties = {
     width: '100%', padding: 14, borderRadius: 12,
-    border: `1px solid ${isRunning ? T.border : 'transparent'}`,
-    background: state === 'done' ? T.teal : state === 'error' ? '#FF4D6A' : isRunning ? T.bgCard : T.blue,
+    border: '1px solid ' + (isRunning ? T.border : 'transparent'),
+    background: state === 'done' ? T.teal : state === 'error' ? T.bgCard : isRunning ? T.bgCard : T.blue,
     color: state === 'done' ? T.bg : isRunning ? T.grey2 : T.white,
     fontSize: 14, fontWeight: 700,
     cursor: isRunning ? 'default' : 'pointer',
@@ -151,28 +160,38 @@ export default function CreatePass() {
   };
 
   const dynamicLogSteps = [
-    ...LOG_STEPS,
-    { prefix: '✓', color: T.teal, text: `transaction confirmed · EdgePass minted · ${txDigest ? txDigest.slice(0, 12) + '...' : ''}`, indent: false },
+    ...logSteps,
+    { prefix: '✓', color: T.teal, text: 'transaction confirmed · EdgePass minted · ' + (txDigest ? txDigest.slice(0, 12) + '...' : ''), indent: false },
     { prefix: '✓', color: T.teal, text: 'policy stored on Walrus · blob certified', indent: false },
     { prefix: '→', color: T.blue, text: 'EdgePass ready', indent: false },
   ];
+
+  const btnLabel = {
+    idle: 'Create EdgePass on Sui',
+    signing: '$ signing with zkLogin...',
+    deploying: '$ deploying Move object...',
+    storing: '$ storing policy on Walrus...',
+    done: '✓ EdgePass minted on-chain',
+    error: 'Try again',
+  }[state];
 
   return (
     <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
-        @keyframes fadeOut { from{opacity:1;transform:none} to{opacity:0;transform:translateY(-4px)} }
         .log-line { opacity: 0; animation: fadeUp 0.3s ease forwards; }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+        input:focus { border-color: #00D4AA !important; }
       `}</style>
       <div style={{ maxWidth: 460, margin: '0 auto' }}>
 
         <div style={{ marginBottom: 28 }}>
           <button onClick={() => router.push('/dashboard')}
             style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 16, padding: 0 }}>
-            ← back
+            back
           </button>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <span style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>FESTIVAL MODE</span>
+            <span style={{ background: T.blueDim, border: '1px solid ' + T.blueBorder, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>FESTIVAL MODE</span>
           </div>
           <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Create EdgePass</h1>
           <p style={{ color: T.grey2, fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif' }}>Define your trust boundaries. Minted as a Move object on Sui.</p>
@@ -180,63 +199,125 @@ export default function CreatePass() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          <div>
-            <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Total Budget</label>
-            <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '11px 14px', color: T.grey1, fontFamily: 'DM Mono, monospace', fontSize: 14 }}>
-              $300
+          {showForm && (
+            <div>
+              <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>
+                Total Budget (USD)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: T.teal, fontFamily: 'DM Mono, monospace', fontSize: 14 }}>$</span>
+                <input
+                  type="number"
+                  value={budget}
+                  min={1}
+                  max={10000}
+                  onChange={e => setBudget(e.target.value === '' ? '' : Number(e.target.value))}
+                  style={{ ...inputStyle, paddingLeft: 28, color: T.teal }}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {[
-              { l: 'Auto-approve under', v: '$50', c: T.teal },
-              { l: 'Escalate above', v: '$100', c: T.gold },
-            ].map(f => (
-              <div key={f.l}>
-                <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>{f.l}</label>
-                <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '11px 14px', color: f.c, fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 600 }}>
-                  {f.v}
+          {showForm && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Auto-approve under</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: T.teal, fontFamily: 'DM Mono, monospace', fontSize: 14 }}>$</span>
+                  <input
+                    type="number"
+                    value={autoThreshold}
+                    min={1}
+                    onChange={e => setAutoThreshold(e.target.value === '' ? '' : Number(e.target.value))}
+                    style={{ ...inputStyle, paddingLeft: 28, color: T.teal }}
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div>
-            <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Expires After</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-              {[24, 48, 72, 168].map(h => (
-                <div key={h} style={{ padding: '10px 0', borderRadius: 8, border: `1px solid ${h === 48 ? T.teal : T.border}`, background: h === 48 ? T.tealDim : T.bg, color: h === 48 ? T.teal : T.grey2, fontFamily: 'DM Mono, monospace', fontSize: 13, textAlign: 'center' }}>
-                  {h}h
+              <div>
+                <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Escalate above</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: T.gold, fontFamily: 'DM Mono, monospace', fontSize: 14 }}>$</span>
+                  <input
+                    type="number"
+                    value={escalateThreshold}
+                    min={1}
+                    onChange={e => setEscalateThreshold(e.target.value === '' ? '' : Number(e.target.value))}
+                    style={{ ...inputStyle, paddingLeft: 28, color: T.gold }}
+                  />
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Approved Merchants</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {MERCHANTS.map(m => (
-                <span key={m} style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 11, fontFamily: 'DM Mono, monospace', padding: '4px 10px', borderRadius: 6 }}>{m}</span>
-              ))}
+          {showForm && (
+            <div>
+              <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Expires After</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {EXPIRY_OPTIONS.map(h => (
+                  <button
+                    key={h}
+                    onClick={() => setExpiry(h)}
+                    style={{
+                      padding: '10px 0', borderRadius: 8, cursor: 'pointer',
+                      border: '1px solid ' + (h === expiry ? T.teal : T.border),
+                      background: h === expiry ? T.tealDim : T.bg,
+                      color: h === expiry ? T.teal : T.grey2,
+                      fontFamily: 'DM Mono, monospace', fontSize: 13, transition: 'all 0.15s',
+                    }}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {showPTB && (
-            <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', animation: 'fadeUp 0.3s ease' }}>
+          {showForm && (
+            <div>
+              <label style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>
+                Approved Merchants <span style={{ color: T.grey2, fontWeight: 400 }}>({selectedMerchants.length} selected)</span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {ALL_MERCHANTS.map(m => {
+                  const selected = selectedMerchants.includes(m);
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => toggleMerchant(m)}
+                      style={{
+                        background: selected ? T.tealDim : T.bgCard,
+                        border: '1px solid ' + (selected ? T.tealBorder : T.border),
+                        color: selected ? T.teal : T.grey2,
+                        fontSize: 11, fontFamily: 'DM Mono, monospace',
+                        padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {selected ? '✓ ' : ''}{m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {showForm && (
+            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 14px', animation: 'fadeUp 0.3s ease' }}>
               <div style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', marginBottom: 8, letterSpacing: '0.06em' }}>PTB PREVIEW</div>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2, lineHeight: 1.8 }}>
                 <div style={{ color: T.grey1 }}>edge::pass::create_pass({'{'}</div>
-                <div style={{ paddingLeft: 16 }}>budget: <span style={{ color: T.teal }}>300000000000</span>,</div>
-                <div style={{ paddingLeft: 16 }}>auto_threshold: <span style={{ color: T.teal }}>50000000000</span>,</div>
-                <div style={{ paddingLeft: 16 }}>escalate_threshold: <span style={{ color: T.gold }}>100000000000</span>,</div>
-                <div style={{ paddingLeft: 16 }}>expiry_ms: <span style={{ color: T.grey1 }}>172800000</span>,</div>
+                <div style={{ paddingLeft: 16 }}>budget: <span style={{ color: T.teal }}>{budgetNum * 1_000_000_000}</span>,</div>
+                <div style={{ paddingLeft: 16 }}>auto_threshold: <span style={{ color: T.teal }}>{autoNum * 1_000_000_000}</span>,</div>
+                <div style={{ paddingLeft: 16 }}>escalate_threshold: <span style={{ color: T.gold }}>{escalateNum * 1_000_000_000}</span>,</div>
+                <div style={{ paddingLeft: 16 }}>expiry_ms: <span style={{ color: T.grey1 }}>{expiry * 3_600_000}</span>,</div>
+                <div style={{ paddingLeft: 16 }}>merchants: <span style={{ color: T.grey1 }}>[{selectedMerchants.length}]</span>,</div>
                 <div style={{ color: T.grey1 }}>{'})'}</div>
               </div>
             </div>
           )}
 
           {showLog && (
-            <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', animation: 'fadeUp 0.4s ease', minHeight: 80 }}>
+            <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '14px 16px', animation: 'fadeUp 0.4s ease', minHeight: 80 }}>
               <div style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', marginBottom: 10, letterSpacing: '0.06em' }}>EXECUTION LOG</div>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, lineHeight: 1.9 }}>
                 {dynamicLogSteps.map((step, i) => (
@@ -251,13 +332,17 @@ export default function CreatePass() {
             </div>
           )}
 
-          {state === 'error' && errorMsg && (
+          {errorMsg && (
             <div style={{ background: 'rgba(255,77,106,0.1)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#FF4D6A' }}>✗ {errorMsg}</div>
             </div>
           )}
 
-          <button onClick={handleCreate} disabled={isRunning} style={btnStyle}>
+          <button
+            onClick={state === 'error' ? () => { setState('idle'); setErrorMsg(null); } : handleCreate}
+            disabled={isRunning}
+            style={btnStyle}
+          >
             {btnLabel}
           </button>
 
