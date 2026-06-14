@@ -7,52 +7,28 @@ export function getZkLoginAddress(idToken: string): string {
 }
 
 export function getDecodedJwt(idToken: string) {
-  return jwtDecode(idToken) as {
-    sub: string;
-    email: string;
-    name: string;
-    picture: string;
-    iss: string;
-    aud: string;
-  };
+  return jwtDecode(idToken) as { sub: string; email: string; name: string; picture: string; iss: string; aud: string; };
 }
 
 interface ZkProofParams {
-  idToken: string;
-  ephemeralKey: string;
-  randomness: string;
-  maxEpoch: number;
-  userAddress: string;
+  idToken: string; ephemeralKey: string; randomness: string; maxEpoch: number; userAddress: string;
 }
 
-export async function generateZkProof({
-  idToken,
-  ephemeralKey,
-  randomness,
-  maxEpoch,
-  userAddress,
-}: ZkProofParams): Promise<object> {
+export async function generateZkProof({ idToken, ephemeralKey, randomness, maxEpoch }: ZkProofParams): Promise<object> {
   const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
   const ephemeralPublicKey = keypair.getPublicKey();
 
-  // Use Enoki ZKP endpoint — returns addressSeed which is required for signing
-  const response = await fetch(
-    'https://api.enoki.mystenlabs.com/v1/zklogin/zkp',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_ENOKI_API_KEY}`,
-        'zklogin-jwt': idToken,
-      },
-      body: JSON.stringify({
-        network: 'testnet',
-        ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
-        maxEpoch,
-        randomness: randomness.toString(),
-      }),
-    }
-  );
+  const response = await fetch('/api/zkp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      network: 'testnet',
+      ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
+      maxEpoch,
+      randomness: randomness.toString(),
+      idToken,
+    }),
+  });
 
   if (!response.ok) {
     const err = await response.text();
@@ -60,34 +36,17 @@ export async function generateZkProof({
   }
 
   const data = await response.json();
-  return data.data; // { proofPoints, issBase64Details, headerBase64, addressSeed }
+  return data.data;
 }
 
-export async function signWithZkLogin(
-  txBytes: Uint8Array
-): Promise<string> {
+export async function signWithZkLogin(txBytes: Uint8Array): Promise<string> {
   const ephemeralKey = localStorage.getItem('edge_ephemeral_key');
   const proofStr = localStorage.getItem('edge_zk_proof');
   const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
   const idToken = localStorage.getItem('edge_id_token');
-
-  if (!ephemeralKey || !proofStr || !idToken) {
-    throw new Error('Missing zkLogin credentials — please log in again');
-  }
-
+  if (!ephemeralKey || !proofStr || !idToken) throw new Error('Missing zkLogin credentials');
   const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
   const proof = JSON.parse(proofStr);
-
   const { signature: ephemeralSignature } = await keypair.signTransaction(txBytes);
-
-  const zkSignature = getZkLoginSignature({
-    inputs: {
-      ...proof,
-      addressSeed: proof.addressSeed,
-    },
-    maxEpoch,
-    userSignature: ephemeralSignature,
-  });
-
-  return zkSignature;
+  return getZkLoginSignature({ inputs: { ...proof, addressSeed: proof.addressSeed }, maxEpoch, userSignature: ephemeralSignature });
 }

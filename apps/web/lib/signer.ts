@@ -21,7 +21,7 @@ export function getIdToken(): string | null {
 
 export function buildSigner(_enokiApiKey: string) {
   return {
-    signAndExecute: async (tx: Transaction) => {
+    signAndExecute: async (tx: Transaction, kindBytes?: string) => {
       const idToken = getIdToken();
       const sender = getUserAddress();
       if (!idToken || !sender) throw new Error('Not authenticated');
@@ -31,26 +31,31 @@ export function buildSigner(_enokiApiKey: string) {
       const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
       if (!ephemeralKey || !proofStr) throw new Error('Missing zkLogin credentials');
 
-      // Set sender so gas is paid from zkLogin address
       tx.setSender(sender);
 
-      const txBytes = await tx.build({ client: suiClient });
+      // Use pre-built kindBytes if provided (create flow — no RPC, instant)
+      // Otherwise build them now (execute/revoke flows)
+      const finalKindBytes = kindBytes ?? toBase64(await tx.build({
+        client: suiClient,
+        onlyTransactionKind: true,
+      }));
 
       const res = await fetch('/api/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          txBytes: toBase64(txBytes),
+          kindBytes: finalKindBytes,
           ephemeralKey,
-          zkProof: JSON.parse(proofStr),
+          zkProof:  JSON.parse(proofStr),
           maxEpoch,
-          idToken
+          idToken,
+          sender,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(`Transaction failed: ${JSON.stringify(data)}`);
-      return { digest: data.digest };
+      return { digest: data.digest, objectId: data.objectId ?? null };
     },
   };
 }

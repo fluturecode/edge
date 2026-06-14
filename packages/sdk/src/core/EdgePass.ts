@@ -1,5 +1,6 @@
 import { SuiClient } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
+import { toBase64 } from "@mysten/sui/utils";
 import {
   EdgePassConfig,
   EdgePassObject,
@@ -9,7 +10,16 @@ import {
 } from "../utils/types";
 import { PolicyEngine } from "./PolicyEngine";
 import { ExecutionEngine } from "./ExecutionEngine";
-import { NETWORK_URLS, EDGE_PACKAGE_ID, DEFAULT_GAS_BUDGET } from "../utils/constants";
+import {
+  NETWORK_URLS,
+  EDGE_PACKAGE_ID,
+  DEFAULT_GAS_BUDGET,
+  EDGE_TEMPLATES,
+  EdgePassTemplate,
+} from "../utils/constants";
+
+// Sui Clock object ID — shared object, always the same address
+const SUI_CLOCK_OBJECT_ID = '0x0000000000000000000000000000000000000000000000000000000000000006';
 
 export class EdgePass {
   private client: SuiClient;
@@ -22,9 +32,21 @@ export class EdgePass {
     this.engine = new ExecutionEngine(config.network);
   }
 
+  static fromTemplate(
+    template: EdgePassTemplate,
+    overrides: Partial<EdgePassConfig> & { owner: string }
+  ): EdgePassConfig {
+    const base = EDGE_TEMPLATES[template];
+    return {
+      ...base,
+      ...overrides,
+      approvedMerchants: overrides.approvedMerchants ?? base.approvedMerchants,
+    };
+  }
+
   async create(
     passConfig: EdgePassConfig,
-    signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string; objectId?: string }> }
+    signer: { signAndExecute: (tx: Transaction, kindBytes: string) => Promise<{ digest: string; objectId?: string | null }> }
   ): Promise<EdgePassObject> {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
@@ -38,36 +60,23 @@ export class EdgePass {
         tx.pure.u64(passConfig.autoThreshold),
         tx.pure.u64(passConfig.escalateThreshold),
         tx.pure.u64(passConfig.expiryMs),
-        tx.pure.vector("string", passConfig.approvedMerchants),
-        tx.object('0x6'), // Sui shared Clock object
+        tx.pure.vector('string', passConfig.approvedMerchants),
+        tx.sharedObjectRef({
+          objectId: SUI_CLOCK_OBJECT_ID,
+          initialSharedVersion: 1,
+          mutable: false,
+        }),
       ],
     });
 
-    const result = await signer.signAndExecute(tx);
-    await new Promise(r => setTimeout(r, 2000));
+    // All arguments statically known — no RPC needed, instant build
+    const kindBytes = toBase64(await tx.build({ onlyTransactionKind: true }));
 
-    // Fetch the created object ID from the transaction effects
-    let objectId = result.objectId || "";
-    if (!objectId && result.digest) {
-      try {
-        const txResult = await this.client.getTransactionBlock({
-          digest: result.digest,
-          options: { showObjectChanges: true },
-        });
-        const created = txResult.objectChanges?.find(
-          (c) => c.type === "created" && c.objectType?.includes("edge_pass::EdgePass")
-        );
-        if (created && created.type === "created") {
-          objectId = created.objectId;
-        }
-      } catch (e) {
-        console.error("Could not fetch object ID from tx:", e);
-      }
-    }
+    const result = await signer.signAndExecute(tx, kindBytes);
 
     const now = Date.now();
     return {
-      id: objectId,
+      id: result.objectId || result.digest,
       config: passConfig,
       spent: BigInt(0),
       active: true,
@@ -98,14 +107,11 @@ export class EdgePass {
   ): Promise<{ digest: string }> {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
-
     const packageId = EDGE_PACKAGE_ID[this.config.network];
-
     tx.moveCall({
       target: `${packageId}::edge_pass::revoke_pass`,
       arguments: [tx.object(pass.id)],
     });
-
     return signer.signAndExecute(tx);
   }
 
