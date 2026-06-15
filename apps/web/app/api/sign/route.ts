@@ -3,23 +3,23 @@ import { fromBase64, toBase64 } from '@mysten/sui/utils';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { getZkLoginSignature } from '@mysten/zklogin';
 import { SuiClient } from '@mysten/sui/client';
-import { Transaction } from '@mysten/sui/transactions';
 
 const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
   try {
-    const { kindBytes, ephemeralKey, zkProof, maxEpoch, idToken, sender } = await req.json();
-    console.log(`[${Date.now()-t0}ms] received request, sender: ${sender?.slice(0,12)}`);
+    const { kindBytes, fullTxBytes, ephemeralKey, zkProof, maxEpoch, idToken, sender } = await req.json();
+    console.log(`[${Date.now()-t0}ms] received request`);
 
     if (!kindBytes || !ephemeralKey || !zkProof || !maxEpoch || !idToken) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const addressSeed = zkProof.addressSeed;
+    const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
 
-    // Try Enoki sponsorship first
+    // ── Try Enoki sponsorship first ────────────────────────────────────────
     const sponsorRes = await fetch(
       'https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor',
       {
@@ -40,76 +40,53 @@ export async function POST(req: NextRequest) {
     const sponsorJson = await sponsorRes.json();
     console.log(`[${Date.now()-t0}ms] sponsor status: ${sponsorRes.status}`);
 
-    // ── Path A: Enoki sponsorship succeeded ───────────────────────────────
     if (sponsorRes.ok && sponsorJson?.data?.bytes) {
       const sponsoredTxBytes = sponsorJson.data.bytes;
       const sponsorDigest = sponsorJson.data.digest;
-      console.log(`[${Date.now()-t0}ms] sponsored, digest: ${sponsorDigest}`);
 
-      const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
-      const { signature: ephemeralSignature } = await keypair.signTransaction(fromBase64(sponsoredTxBytes));
-      const zkSignature = getZkLoginSignature({
-        inputs: { ...zkProof, addressSeed },
-        maxEpoch,
-        userSignature: ephemeralSignature,
-      });
+      const { signature: eph } = await keypair.signTransaction(fromBase64(sponsoredTxBytes));
+      const zkSig = getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature: eph });
 
       const executeRes = await fetch(
         `https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor/${sponsorDigest}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.ENOKI_SECRET_KEY}`,
-          },
-          body: JSON.stringify({ signature: zkSignature }),
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.ENOKI_SECRET_KEY}` },
+          body: JSON.stringify({ signature: zkSig }),
         }
       );
 
       const executeJson = await executeRes.json();
-      console.log(`[${Date.now()-t0}ms] enoki execute status: ${executeRes.status}`);
+      console.log(`[${Date.now()-t0}ms] enoki execute: ${executeRes.status}`);
 
       if (executeRes.ok) {
-        const finalDigest = executeJson?.data?.digest;
-        console.log(`[${Date.now()-t0}ms] ✓ sponsored confirmed: ${finalDigest}`);
-        const objectId = await fetchObjectId(finalDigest);
-        return NextResponse.json({ digest: finalDigest, objectId, sponsored: true });
+        const digest = executeJson?.data?.digest;
+        console.log(`[${Date.now()-t0}ms] ✓ sponsored: ${digest}`);
+        const objectId = await fetchObjectId(digest);
+        return NextResponse.json({ digest, objectId, sponsored: true });
       }
 
-      console.warn(`[${Date.now()-t0}ms] Enoki execute failed: ${JSON.stringify(executeJson)}, falling back to direct...`);
+      console.warn(`[${Date.now()-t0}ms] Enoki execute failed, falling back to direct...`);
     }
 
-    // ── Path B: Direct execution — sender pays own gas ────────────────────
-    console.log(`[${Date.now()-t0}ms] building direct tx...`);
+    // ── Fallback: direct execution with sender's own gas ──────────────────
+    if (!fullTxBytes) {
+      return NextResponse.json({ error: 'No fullTxBytes provided for direct execution' }, { status: 400 });
+    }
 
-    // Rebuild the full transaction from kind bytes with sender + gas
-    const tx = Transaction.fromKind(kindBytes);
-    tx.setSender(sender);
-    tx.setGasBudget(BigInt(10_000_000));
+    console.log(`[${Date.now()-t0}ms] executing directly with sender gas...`);
 
-    // Build with client so gas coin is resolved
-    const txBytes = await tx.build({ client: suiClient });
-    console.log(`[${Date.now()-t0}ms] tx built`);
-
-    const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
-    const { signature: ephemeralSignature } = await keypair.signTransaction(txBytes);
-
-    const zkSignature = getZkLoginSignature({
-      inputs: { ...zkProof, addressSeed },
-      maxEpoch,
-      userSignature: ephemeralSignature,
-    });
-
-    console.log(`[${Date.now()-t0}ms] signed, executing directly...`);
+    const txBytesDecoded = fromBase64(fullTxBytes);
+    const { signature: eph } = await keypair.signTransaction(txBytesDecoded);
+    const zkSig = getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature: eph });
 
     const result = await suiClient.executeTransactionBlock({
-      transactionBlock: toBase64(txBytes),
-      signature: [zkSignature],
+      transactionBlock: fullTxBytes,
+      signature: [zkSig],
       options: { showEffects: true, showObjectChanges: true },
     });
 
-    console.log(`[${Date.now()-t0}ms] ✓ direct confirmed: ${result.digest}`);
-
+    console.log(`[${Date.now()-t0}ms] ✓ direct: ${result.digest}`);
     const objectId = await fetchObjectId(result.digest);
     return NextResponse.json({ digest: result.digest, objectId, sponsored: false });
 
@@ -122,16 +99,16 @@ export async function POST(req: NextRequest) {
 async function fetchObjectId(digest: string): Promise<string | null> {
   try {
     await new Promise(r => setTimeout(r, 2000));
-    const txResult = await suiClient.getTransactionBlock({
+    const tx = await suiClient.getTransactionBlock({
       digest,
       options: { showObjectChanges: true },
     });
-    const created = txResult.objectChanges?.find(
+    const created = tx.objectChanges?.find(
       c => c.type === 'created' && 'objectType' in c && c.objectType?.includes('edge_pass')
     );
     return created && 'objectId' in created ? created.objectId : null;
   } catch (e) {
-    console.error('Could not fetch objectId:', e);
+    console.error('fetchObjectId failed:', e);
     return null;
   }
 }

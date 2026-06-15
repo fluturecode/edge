@@ -32,9 +32,12 @@ export function buildSigner(_enokiApiKey: string) {
       if (!ephemeralKey || !proofStr) throw new Error('Missing zkLogin credentials');
 
       tx.setSender(sender);
+      tx.setGasBudget(BigInt(10_000_000));
 
-      // Use pre-built kindBytes if provided (create flow — no RPC, instant)
-      // Otherwise build them now (execute/revoke flows)
+      // Always build full tx bytes for direct fallback
+      const fullTxBytes = toBase64(await tx.build({ client: suiClient }));
+
+      // Build kind bytes if not provided
       const finalKindBytes = kindBytes ?? toBase64(await tx.build({
         client: suiClient,
         onlyTransactionKind: true,
@@ -45,6 +48,7 @@ export function buildSigner(_enokiApiKey: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           kindBytes: finalKindBytes,
+          fullTxBytes,
           ephemeralKey,
           zkProof:  JSON.parse(proofStr),
           maxEpoch,
