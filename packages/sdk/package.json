@@ -1,6 +1,6 @@
 {
   "name": "@edge-protocol/sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Trust delegation primitive for autonomous onchain systems on Sui",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
