@@ -70,29 +70,30 @@ export async function POST(req: NextRequest) {
       console.warn(`[${Date.now()-t0}ms] Enoki execute failed, falling back to direct...`);
     }
 
-    // ── Fallback: build fresh tx server-side with sender's gas coins ───────
+    // ── Fallback: sender pays own gas ──────────────────────────────────────
     console.log(`[${Date.now()-t0}ms] fetching sender gas coins...`);
 
     const coins = await suiClient.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
     if (!coins.data.length) {
-      return NextResponse.json({ error: 'No SUI coins found for sender. Please fund your zkLogin address.' }, { status: 400 });
+      return NextResponse.json({ error: 'No SUI coins found. Fund your address at faucet.testnet.sui.io' }, { status: 400 });
     }
 
     const gasCoin = coins.data[0];
-    console.log(`[${Date.now()-t0}ms] gas coin: ${gasCoin.coinObjectId}, balance: ${gasCoin.balance}`);
+    console.log(`[${Date.now()-t0}ms] gas coin: ${gasCoin.coinObjectId}`);
 
-    // Build fresh transaction from kind bytes with explicit gas payment
+    // Build from kind bytes — sender is both user AND gas owner
     const tx = Transaction.fromKind(kindBytes);
     tx.setSender(sender);
+    tx.setGasOwner(sender);
     tx.setGasBudget(BigInt(10_000_000));
     tx.setGasPayment([{
       objectId: gasCoin.coinObjectId,
       version: gasCoin.version,
-      digest: gasCoin.digest,
+      digest:   gasCoin.digest,
     }]);
 
     const txBytes = await tx.build({ client: suiClient });
-    console.log(`[${Date.now()-t0}ms] fresh tx built with explicit gas`);
+    console.log(`[${Date.now()-t0}ms] tx built`);
 
     const { signature: eph } = await keypair.signTransaction(txBytes);
     const zkSig = getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature: eph });
