@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     }]);
 
     const txBytes = await tx.build({ client: suiClient });
-    console.log(`[${Date.now()-t0}ms] tx built`);
+    console.log(`[${Date.now()-t0}ms] tx built v2 setGasOwner`);
 
     const { signature: eph } = await keypair.signTransaction(txBytes);
     const zkSig = getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature: eph });
