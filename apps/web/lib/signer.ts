@@ -31,23 +31,27 @@ export function buildSigner(_enokiApiKey: string) {
       const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
       if (!ephemeralKey || !proofStr) throw new Error('Missing zkLogin credentials');
 
+      // Fetch sender's own gas coins to avoid Enoki-tainted gas objects
+      const coins = await suiClient.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
+      if (!coins.data.length) throw new Error('No SUI coins found. Fund your address at faucet.testnet.sui.io');
+
+      const gasCoin = coins.data[0];
+
       tx.setSender(sender);
+      tx.setGasOwner(sender);
       tx.setGasBudget(BigInt(10_000_000));
+      tx.setGasPayment([{
+        objectId: gasCoin.coinObjectId,
+        version:  gasCoin.version,
+        digest:   gasCoin.digest,
+      }]);
 
-      // Always build full tx bytes for direct fallback
       const fullTxBytes = toBase64(await tx.build({ client: suiClient }));
-
-      // Build kind bytes if not provided
-      const finalKindBytes = kindBytes ?? toBase64(await tx.build({
-        client: suiClient,
-        onlyTransactionKind: true,
-      }));
 
       const res = await fetch('/api/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kindBytes: finalKindBytes,
           fullTxBytes,
           ephemeralKey,
           zkProof:  JSON.parse(proofStr),
