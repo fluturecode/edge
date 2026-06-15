@@ -3,13 +3,14 @@ import { fromBase64, toBase64 } from '@mysten/sui/utils';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { getZkLoginSignature } from '@mysten/zklogin';
 import { SuiClient } from '@mysten/sui/client';
+import { Transaction } from '@mysten/sui/transactions';
 
 const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
   try {
-    const { kindBytes, fullTxBytes, ephemeralKey, zkProof, maxEpoch, idToken, sender } = await req.json();
+    const { kindBytes, ephemeralKey, zkProof, maxEpoch, idToken, sender } = await req.json();
     console.log(`[${Date.now()-t0}ms] received request`);
 
     if (!kindBytes || !ephemeralKey || !zkProof || !maxEpoch || !idToken) {
@@ -69,19 +70,37 @@ export async function POST(req: NextRequest) {
       console.warn(`[${Date.now()-t0}ms] Enoki execute failed, falling back to direct...`);
     }
 
-    // ── Fallback: direct execution with sender's own gas ──────────────────
-    if (!fullTxBytes) {
-      return NextResponse.json({ error: 'No fullTxBytes provided for direct execution' }, { status: 400 });
+    // ── Fallback: build fresh tx server-side with sender's gas coins ───────
+    console.log(`[${Date.now()-t0}ms] fetching sender gas coins...`);
+
+    const coins = await suiClient.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
+    if (!coins.data.length) {
+      return NextResponse.json({ error: 'No SUI coins found for sender. Please fund your zkLogin address.' }, { status: 400 });
     }
 
-    console.log(`[${Date.now()-t0}ms] executing directly with sender gas...`);
+    const gasCoin = coins.data[0];
+    console.log(`[${Date.now()-t0}ms] gas coin: ${gasCoin.coinObjectId}, balance: ${gasCoin.balance}`);
 
-    const txBytesDecoded = fromBase64(fullTxBytes);
-    const { signature: eph } = await keypair.signTransaction(txBytesDecoded);
+    // Build fresh transaction from kind bytes with explicit gas payment
+    const tx = Transaction.fromKind(kindBytes);
+    tx.setSender(sender);
+    tx.setGasBudget(BigInt(10_000_000));
+    tx.setGasPayment([{
+      objectId: gasCoin.coinObjectId,
+      version: gasCoin.version,
+      digest: gasCoin.digest,
+    }]);
+
+    const txBytes = await tx.build({ client: suiClient });
+    console.log(`[${Date.now()-t0}ms] fresh tx built with explicit gas`);
+
+    const { signature: eph } = await keypair.signTransaction(txBytes);
     const zkSig = getZkLoginSignature({ inputs: { ...zkProof, addressSeed }, maxEpoch, userSignature: eph });
 
+    console.log(`[${Date.now()-t0}ms] signed, executing...`);
+
     const result = await suiClient.executeTransactionBlock({
-      transactionBlock: fullTxBytes,
+      transactionBlock: toBase64(txBytes),
       signature: [zkSig],
       options: { showEffects: true, showObjectChanges: true },
     });
