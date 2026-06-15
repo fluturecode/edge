@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
       const txb = Transaction.fromKind(builtKind);
       txb.setSender(sender);
-      txb.setGasBudget(10_000_000n);
+      txb.setGasBudget(BigInt(10_000_000));
 
       const txBytes = await txb.build({ client: suiClient });
       console.log(`[${Date.now()-t0}ms] tx built`);
