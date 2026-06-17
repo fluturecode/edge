@@ -347,7 +347,7 @@ export default function CreatePass() {
           </button>
 
           <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, margin: 0, fontFamily: 'DM Mono, monospace' }}>
-            gas sponsored by Enoki · no SUI required · PTB atomic execution
+            zkLogin verified · PTB atomic execution · Sui testnet
           </p>
         </div>
       </div>
