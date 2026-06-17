@@ -1,21 +1,18 @@
 <div align="center">
 
-```
-◎ EDGE  ·  built on Sui
-```
+# @edge-protocol/sdk
 
-# Edge — Programmable Trust for Autonomous Systems
+### Programmable Trust for Autonomous AI Agents on Sui
 
+[![npm version](https://img.shields.io/npm/v/@edge-protocol/sdk?style=flat-square&color=FF4D6A)](https://npmjs.com/package/@edge-protocol/sdk)
+[![npm downloads](https://img.shields.io/npm/dm/@edge-protocol/sdk?style=flat-square&color=FFB830)](https://npmjs.com/package/@edge-protocol/sdk)
+[![Tests](https://img.shields.io/badge/tests-6%2F6_passing-00D4AA?style=flat-square)](src/test.ts)
 [![Built on Sui](https://img.shields.io/badge/Built%20on-Sui-4DA2FF?style=flat-square)](https://sui.io)
-[![Walrus](https://img.shields.io/badge/Storage-Walrus-00D4AA?style=flat-square)](https://walrus.xyz)
-[![npm](https://img.shields.io/badge/npm-%40edge--protocol%2Fsdk-FF4D6A?style=flat-square)](https://npmjs.com/package/@edge-protocol/sdk)
-[![Tests](https://img.shields.io/badge/tests-6%2F6%20passing-00D4AA?style=flat-square)](#testing)
-[![License: MIT](https://img.shields.io/badge/License-MIT-FFB830?style=flat-square)](LICENSE)
-[![Sui Overflow 2026](https://img.shields.io/badge/Sui%20Overflow-2026%20🏆-4DA2FF?style=flat-square)](https://overflow.sui.io)
+[![License](https://img.shields.io/badge/license-MIT-B8C8E0?style=flat-square)](LICENSE)
 
-**[Live Demo](https://edge-web-git-main-fluturecodes-projects.vercel.app) · [Sui Overflow 2026](https://overflow.sui.io)**
+**Give agents your rules, not your keys.**
 
-*Users set the course. Edge handles the journey safely.*
+[Live Demo](https://edge-web-git-main-fluturecodes-projects.vercel.app) · [Full Docs](https://github.com/fluturecode/edge/blob/main/packages/sdk/DOCS.md) · [GitHub](https://github.com/fluturecode/edge)
 
 </div>
 
@@ -23,145 +20,212 @@
 
 ## The Problem
 
-AI agents cannot transact autonomously on behalf of users without either constant wallet interruptions or unlimited fund access. There is no programmable trust boundary between the two.
+```
+Option A: Give the agent full wallet access  →  catastrophic risk
+Option B: Human approves every transaction  →  defeats the purpose  
+Option C: Build custom policy logic         →  6-8 weeks of work
+```
 
-**Edge fixes this.**
+**EdgePass is Option D** — a programmable trust boundary that lets agents transact autonomously within user-defined limits, enforced on-chain via Sui Move.
 
 ---
 
-## What is Edge?
-
-Edge is a **trust delegation primitive** for autonomous onchain systems. Users define boundaries once — budget, merchants, thresholds, expiry. Apps and agents execute freely within them. Unsafe actions escalate automatically.
-
-The atomic unit is the **EdgePass** — a Sui Move object encoding a complete trust policy:
-
-```
-budget: $300  ·  auto-approve: < $50  ·  escalate: > $100  ·  merchants: [...]  ·  expiry: 48h
-```
-
----
-
-## SDK Quickstart
+## Install
 
 ```bash
 npm install @edge-protocol/sdk
 # or
-yarn add @edge-protocol/sdk
-# or
 pnpm add @edge-protocol/sdk
+# or
+yarn add @edge-protocol/sdk
 ```
+
+---
+
+## Quickstart
 
 ```typescript
 import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 
-const sdk = new EdgePass({ network: 'testnet', enokiApiKey: '...' });
+const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: 'YOUR_KEY' });
 
-// 1. Create a trust boundary
+// 1. Create a trust boundary (once)
+const pass = await sdk.create(
+  EdgePass.fromTemplate('festival', {
+    approvedMerchants: ['Shuttle Express', 'Hydra Bar'],
+    owner: userAddress,
+  }),
+  signer
+);
+
+// 2. Execute autonomously (many times)
+const outcome = await sdk.execute(pass, {
+  merchant: 'Shuttle Express',
+  amount:   18_500_000_000n, // 18.5 SUI in MIST
+}, signer);
+
+switch (outcome.status) {
+  case 'approved':   // ✅ executed on-chain, digest on Walrus
+  case 'escalated':  // ⚠️ notify user, await approval
+  case 'blocked':    // 🚫 policy rejected, reason logged
+}
+```
+
+---
+
+## Templates
+
+Pre-configured trust boundaries for common use cases:
+
+```typescript
+EdgePass.fromTemplate('festival',     { owner })  // $300 · auto <$50 · escalate >$100 · 48h
+EdgePass.fromTemplate('gaming',       { owner })  // $50  · auto <$2  · escalate >$10  · 4h
+EdgePass.fromTemplate('subscription', { owner })  // $200 · auto <$20 · escalate >$50  · 30d
+EdgePass.fromTemplate('defi',         { owner })  // $10k · auto <$500 · escalate >$1k · 7d
+EdgePass.fromTemplate('enterprise',   { owner })  // $50k · auto <$1k · escalate >$5k · 30d
+```
+
+Override any field:
+
+```typescript
+const pass = await sdk.create(
+  EdgePass.fromTemplate('defi', {
+    budget: 25_000n * MIST_PER_SUI,
+    approvedMerchants: ['DeepBook', 'Cetus'],
+    owner: userAddress,
+  }),
+  signer
+);
+```
+
+---
+
+## Full API
+
+### `new EdgePass(config)`
+
+```typescript
+const sdk = new EdgePass({
+  network:     'mainnet' | 'testnet' | 'devnet',
+  enokiApiKey: string,
+});
+```
+
+### `sdk.create(config, signer)` → `EdgePassObject`
+
+Mint a new EdgePass on Sui. Returns the EdgePass object with its on-chain ID.
+
+```typescript
 const pass = await sdk.create({
   budget:            300n * MIST_PER_SUI,
   autoThreshold:      50n * MIST_PER_SUI,
   escalateThreshold: 100n * MIST_PER_SUI,
-  approvedMerchants: ['Shuttle Express', 'Hydra Bar'],
+  maxPerTransaction: 200n * MIST_PER_SUI, // optional
+  approvedMerchants: ['Shuttle Express'],
   expiryMs:          48 * 60 * 60 * 1000,
   owner:             userAddress,
 }, signer);
 
-// 2. Execute autonomously — policy enforced on every call
+console.log(pass.id); // Sui object ID — verifiable on Suiscan
+```
+
+### `sdk.execute(pass, request, signer)` → `TransactionOutcome`
+
+Execute a transaction against the EdgePass. Policy enforced before touching the chain.
+
+```typescript
 const outcome = await sdk.execute(pass, {
   merchant: 'Shuttle Express',
   amount:   18_500_000_000n,
 }, signer);
 
-// outcome.status → 'approved' | 'escalated' | 'blocked'
+// outcome.status  → 'approved' | 'escalated' | 'blocked'
+// outcome.digest  → tx digest (if approved)
+// outcome.reason  → explanation (if escalated or blocked)
 ```
+
+### `sdk.validate(pass, request)` → `PolicyValidation`
+
+Preview the outcome without executing. Zero network calls. Use for UI previews.
+
+```typescript
+const preview = sdk.validate(pass, { merchant, amount });
+// { allowed: boolean, requiresEscalation: boolean, reason: string }
+```
+
+### `sdk.revoke(pass, signer)`
+
+Revoke an EdgePass. All future `execute()` calls return `blocked` immediately.
+
+### `sdk.remainingBudget(pass)` → `bigint`
+
+Returns remaining budget in MIST.
+
+### `sdk.isValid(pass)` → `boolean`
+
+Returns `true` if the pass is active and not expired.
+
+### `EdgePass.fromTemplate(template, overrides)` → `EdgePassConfig`
+
+Create a config from a pre-built template.
 
 ---
 
-## How It Works
+## Policy Validation Rules
 
-```
-User creates EdgePass (once)
-         │
-         ▼
-Agent calls sdk.execute() (many times)
-         │
-         ├── PolicyEngine validates (pure TS, no network)
-         │         ├── active? expired? merchant approved? budget remaining?
-         │         ├── amount > escalateThreshold? → ⚠️  escalate to user
-         │         └── amount ≤ autoThreshold?     → ✅ auto-approve
-         │
-         ├── ExecutionEngine builds PTB (atomic)
-         │         validate → execute → update spent → emit event
-         │
-         └── Walrus writes immutable audit log
-```
+PolicyEngine validates in this order:
+
+1. Pass must be active
+2. Pass must not be expired
+3. Merchant must be in approved list
+4. Amount must not exceed remaining budget
+5. Amount must not exceed `maxPerTransaction` (if set)
+6. If amount > `escalateThreshold` → escalate
+7. If amount ≤ `autoThreshold` → auto-approve
 
 ---
 
-## Festival Mode Demo
+## Why Sui
 
-| Merchant | Amount | Outcome |
-|----------|--------|---------|
-| 🚌 Shuttle Express | $18.50 | ✅ Auto-approved · on-chain tx confirmed |
-| 🍹 Hydra Bar | $32.00 | ✅ Auto-approved · on-chain tx confirmed |
-| 🎟 Stage Access VIP | $75.00 | ✅ Auto-approved · on-chain tx confirmed |
-| ☠️ ShadyTokens.xyz | $0.01 | 🚫 Blocked — not in allowlist |
-| 🎤 Artist Meet & Greet | $149.00 | ⚠️ Escalated — exceeds $100 threshold |
+Five primitives make this only possible on Sui:
 
-**3 auto-approved · 1 blocked · 1 escalated · 0 wallet popups**
-
-All approved transactions confirmed on Sui testnet with real digests.  
-Audit log live on Walrus: [view blob](https://walruscan.com/testnet/blob/aMp7SskBz83OJLg-2RwxPf-8psdURdoVyyDhtYMujT4)
+- **zkLogin** — invisible wallet from Google, no seed phrase
+- **Sponsored Transactions** — users never pay gas
+- **PTBs** — atomic policy + execution + audit in one block
+- **Object Model** — EdgePass owned directly by user, not a contract
+- **Walrus** — immutable audit receipts, no database needed
 
 ---
 
-## Sui Primitives Used
+## Live Demo
 
-| Primitive | Role |
-|-----------|------|
-| 🔐 **zkLogin** | Google login → invisible Sui wallet, no seed phrase, real ZK proof |
-| ⛽ **Enoki** | Gas sponsorship — users never pay transaction fees |
-| 🧱 **PTBs** | Atomic: validate → execute → update → log in one transaction |
-| 📦 **Move Objects** | EdgePass as owned, programmable on-chain state |
-| 🗂 **Walrus** | Immutable, decentralized audit logs with real tx digests |
-| 🔒 **Seal** | Encrypted trust policies (Phase 3) |
-
----
-
-## Move Contract
-
-**Deployed to Sui testnet:**
+Festival Mode: Claude autonomously manages purchases within an EdgePass.
 
 ```
-Package ID:  0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
-Deploy Tx:   64fovgDj7P5DX9mNDTEEmEwVU2cxxJhQvnZq2eos1s84
-First Pass:  2wstpGwQgb8v6CDKdAmVjJBAHZ873MPFNMBNfvQutFKF
+🧠 Claude:       "Shuttle from parking — $18.50"
+⚙️ PolicyEngine: ✅ auto-approved · trusted merchant
+⛓ Sui:          execute_transaction · Success · Suiscan verified
+
+🧠 Claude:       "Artist meet & greet — $149"  
+⚙️ PolicyEngine: ⚠️ escalated · exceeds $100 threshold
+👤 User:         approves via modal
+
+3 transactions · $54.50 spent · 0 wallet popups
 ```
 
-[View on Sui Explorer →](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d)
+[See it live →](https://edge-web-git-main-fluturecodes-projects.vercel.app)
 
 ---
 
-## Local Development
+## Testing
 
 ```bash
-git clone https://github.com/fluturecode/edge.git
-cd edge && pnpm install
-
-# Set env vars
-cp apps/web/.env.example apps/web/.env.local
-# Add NEXT_PUBLIC_ENOKI_API_KEY, ENOKI_SECRET_KEY, NEXT_PUBLIC_GOOGLE_CLIENT_ID
-
-# Run
-cd apps/web && pnpm dev  # → localhost:3000
-
-# Test SDK
-cd packages/sdk && pnpm test
+pnpm test
 ```
 
 ```
-✓ auto-approves under $50
-✓ escalates above $100
+✓ auto-approves under threshold
+✓ escalates above threshold  
 ✓ blocks unlisted merchant
 ✓ blocks when budget exceeded
 ✓ blocks when expired
@@ -171,69 +235,19 @@ cd packages/sdk && pnpm test
 
 ---
 
-## Confirmed On-Chain Activity
-
-| Action | Tx Digest | Status |
-|--------|-----------|--------|
-| EdgePass created | [2wstpGwQ...](https://suiscan.xyz/testnet/tx/2wstpGwQgb8v6CDKdAmVjJBAHZ873MPFNMBNfvQutFKF) | ✅ Confirmed |
-| Shuttle Express $18.50 | on-chain | ✅ Confirmed |
-| Hydra Bar $32.00 | on-chain | ✅ Confirmed |
-| Stage Access VIP $75.00 | on-chain | ✅ Confirmed |
-| Walrus audit log | [Tly_O_M8...](https://walruscan.com/testnet/blob/Tly_O_M8YpJw-AZqWJ1JRv9xlgZ_W11Er3xoD4BtZlw) | ✅ Live |
-
----
-
-## Repo Structure
+## Move Contract
 
 ```
-edge/
-├── apps/web/               # Next.js 16 demo app
-│   ├── app/api/
-│   │   ├── sponsor/        # Enoki sponsorship (server-side)
-│   │   └── sign/           # zkLogin signing + Sui RPC
-│   └── lib/
-│       ├── zklogin.ts      # ZK proof via Enoki
-│       ├── signer.ts       # buildSigner
-│       └── walrus.ts       # Audit log storage
-├── packages/sdk/           # @edge-protocol/sdk
-│   └── src/core/
-│       ├── EdgePass.ts         # Main API
-│       ├── PolicyEngine.ts     # Validation logic
-│       └── ExecutionEngine.ts  # PTB builder
-└── contracts/navis/        # Move contract
-    └── sources/edge_pass.move
+Package:  0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+Network:  Sui Testnet (Mainnet coming)
 ```
-
----
-
-## Roadmap
-
-- [x] zkLogin onboarding — real ZK proof via Enoki
-- [x] EdgePass creation — real on-chain Move object
-- [x] PolicyEngine — 6/6 tests passing
-- [x] Festival Mode — real on-chain execution
-- [x] Walrus audit logs — live on testnet with real digests
-- [x] Move contract — testnet deployed
-- [x] GitHub Actions CI/CD pipeline
-- [ ] AI agent demo
-- [ ] `@edge-protocol/sdk` on npm
-- [ ] Mainnet deployment
-- [ ] Seal full encryption
-
----
-
-## Why It Matters
-
-The agentic web needs programmable trust. Without it, agents either interrupt users constantly or operate with no guardrails. Edge is the missing primitive — open SDK, on-chain policy, zero UX friction.
-
-> *The best infrastructure is invisible.*
 
 ---
 
 <div align="center">
 
-Built by [@fluturecode](https://github.com/fluturecode) for [Sui Overflow 2026](https://overflow.sui.io) — Agentic Web track.
+*The best infrastructure is invisible.*
 
-MIT License
+Built for [Sui Overflow 2026](https://overflow.sui.io) · MIT License
 
 </div>
