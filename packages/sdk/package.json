@@ -1,11 +1,13 @@
 {
   "name": "@edge-protocol/sdk",
-  "version": "0.4.0",
-  "description": "Trust delegation primitive for autonomous onchain systems on Sui",
+  "version": "0.4.1",
+  "description": "Programmable trust infrastructure for autonomous AI agents on Sui. Give agents your rules, not your keys.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "DOCS.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -15,13 +17,31 @@
   },
   "keywords": [
     "sui",
+    "sui-sdk",
     "zklogin",
+    "autonomous-agents",
+    "ai-agents",
+    "trust-delegation",
+    "edgepass",
+    "walrus",
+    "defi",
+    "web3",
+    "blockchain",
+    "move",
+    "move-language",
+    "ptb",
+    "programmable-transaction",
+    "agent-policy",
+    "spending-limits",
+    "crypto-agents",
+    "agentic-web",
     "autonomous",
     "trust",
     "delegation",
     "agent",
-    "web3",
-    "move"
+    "mysten",
+    "enoki",
+    "sponsored-transactions"
   ],
   "author": "fluturecode",
   "license": "MIT",
@@ -30,6 +50,9 @@
     "url": "https://github.com/fluturecode/edge"
   },
   "homepage": "https://github.com/fluturecode/edge#readme",
+  "bugs": {
+    "url": "https://github.com/fluturecode/edge/issues"
+  },
   "dependencies": {
     "@mysten/sui": "^1.30.0",
     "@mysten/zklogin": "^0.8.1"

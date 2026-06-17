@@ -411,7 +411,7 @@ edge/
 - [x] 🗂 Walrus audit logs — live blobs on testnet
 - [x] 🔒 Seal policy encryption
 - [x] Move contract — deployed to Sui testnet
-- [x] SDK on npm — `@edge-protocol/sdk@0.1.2`
+- [x] SDK on npm — `@edge-protocol/sdk`
 - [x] CI/CD — GitHub Actions contract deployment
 
 **Phase 2 — Trust Layer** 🔨 *in progress*
@@ -472,3 +472,4 @@ Built with ♥ by [**@fluturecode**](https://github.com/fluturecode) for [**Sui 
 MIT License
 
 </div>
+>
