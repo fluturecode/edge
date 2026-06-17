@@ -25,7 +25,7 @@
 
 <br />
 
-[**Live Demo →**](https://edge-web-git-main-fluturecodes-projects.vercel.app) &nbsp;·&nbsp; [**npm →**](https://npmjs.com/package/@edge-protocol/sdk) &nbsp;·&nbsp; [**Contract →**](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d) &nbsp;·&nbsp; [**Docs →**](packages/sdk/DOCS.md)
+[**Live Demo →**](https://edge-web-cyan.vercel.app) &nbsp;·&nbsp; [**npm →**](https://npmjs.com/package/@edge-protocol/sdk) &nbsp;·&nbsp; [**Contract →**](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d) &nbsp;·&nbsp; [**Docs →**](packages/sdk/DOCS.md)
 
 <br />
 
