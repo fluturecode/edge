@@ -174,7 +174,7 @@ export class ExecutionEngine {
       const fields = obj.data.content.fields as Record<string, any>;
 
       // Validate required fields exist before accessing
-      const requiredFields = ['budget', 'auto_threshold', 'escalate_threshold', 'approved_merchants', 'expiry_ms', 'owner', 'spent', 'active', 'created_at', 'expires_at'];
+      const requiredFields = ['budget', 'auto_threshold', 'escalate_threshold', 'approved_merchants', 'owner', 'spent', 'active', 'created_at', 'expires_at'];
       for (const field of requiredFields) {
         if (fields[field] === undefined) {
           throw new Error(
@@ -191,7 +191,7 @@ export class ExecutionEngine {
           autoThreshold:     BigInt(fields.auto_threshold),
           escalateThreshold: BigInt(fields.escalate_threshold),
           approvedMerchants: fields.approved_merchants,
-          expiryMs:          Number(fields.expiry_ms),
+          expiryMs:          Number(fields.expires_at) - Number(fields.created_at),
           owner:             fields.owner,
         },
         spent:     BigInt(fields.spent),
