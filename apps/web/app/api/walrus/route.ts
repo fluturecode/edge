@@ -1,26 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const WALRUS_PUBLISHER = "https://walrus-mainnet-publisher-1.staketab.org:443";
+const PUBLISHERS = [
+  "https://walrus-mainnet-publisher-1.staketab.org:443",
+  "https://walrus-mainnet.brightlystake.com",
+];
+
+async function tryPublisher(publisher: string, data: string) {
+  const res = await fetch(`${publisher}/v1/blobs`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: data,
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`${publisher} returned ${res.status}`);
+  return res.json();
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const data = JSON.stringify(body);
 
-    const walrusRes = await fetch(`${WALRUS_PUBLISHER}/v1/blobs`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: data,
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (walrusRes.ok) {
-      const result = await walrusRes.json();
-      console.log("Walrus write SUCCESS:", result);
-      return NextResponse.json(result);
+    for (const publisher of PUBLISHERS) {
+      try {
+        const result = await tryPublisher(publisher, data);
+        console.log("Walrus write SUCCESS via", publisher, result);
+        return NextResponse.json(result);
+      } catch (err) {
+        console.log("Walrus publisher failed, trying next:", publisher, err);
+      }
     }
 
-    throw new Error(`Walrus returned ${walrusRes.status}`);
+    throw new Error("All publishers failed");
 
   } catch (error) {
     console.log("Walrus fallback (mock):", error);
