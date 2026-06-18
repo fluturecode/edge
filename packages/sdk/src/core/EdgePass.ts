@@ -23,6 +23,8 @@ const SUI_CLOCK_OBJECT_ID = '0x0000000000000000000000000000000000000000000000000
 
 // ── Event types ───────────────────────────────────────────────────────────────
 
+// Note: 'error' is NOT an event type — infrastructure errors don't fire events
+// Only policy outcomes (approved/escalated/blocked) fire events
 export type EdgePassEventType = 'approved' | 'escalated' | 'blocked';
 
 export type EdgePassEventPayload =
@@ -52,16 +54,16 @@ export class EdgePass {
 
   /**
    * Subscribe to transaction outcomes.
+   * Note: 'error' status (network/signing failures) does NOT fire events.
+   * Check outcome.status === 'error' in your execute() handler instead.
    *
    * @example
    * sdk.on('approved', ({ outcome, pass }) => {
    *   console.log('executed:', outcome.digest);
    * });
-   *
    * sdk.on('escalated', ({ outcome, request }) => {
    *   notifyUser(`Approve $${request.amount} at ${request.merchant}?`);
    * });
-   *
    * sdk.on('blocked', ({ outcome }) => {
    *   logger.warn('blocked:', outcome.reason);
    * });
@@ -71,7 +73,7 @@ export class EdgePass {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(listener);
-    return this; // chainable
+    return this;
   }
 
   /**
@@ -138,10 +140,45 @@ export class EdgePass {
     passConfig: EdgePassConfig,
     signer: { signAndExecute: (tx: Transaction, kindBytes: string) => Promise<{ digest: string; objectId?: string | null }> }
   ): Promise<EdgePassObject> {
+
+    // ── Config validation ─────────────────────────────────────────────────
+    if (passConfig.autoThreshold >= passConfig.escalateThreshold) {
+      throw new Error(
+        `EdgePass.create: autoThreshold (${passConfig.autoThreshold}) must be less than escalateThreshold (${passConfig.escalateThreshold})`
+      );
+    }
+    if (passConfig.escalateThreshold > passConfig.budget) {
+      throw new Error(
+        `EdgePass.create: escalateThreshold (${passConfig.escalateThreshold}) must be less than budget (${passConfig.budget})`
+      );
+    }
+    if (passConfig.maxPerTransaction !== undefined &&
+        passConfig.maxPerTransaction < passConfig.escalateThreshold) {
+      throw new Error(
+        `EdgePass.create: maxPerTransaction (${passConfig.maxPerTransaction}) should be >= escalateThreshold (${passConfig.escalateThreshold}) to avoid unexpected blocking`
+      );
+    }
+    if (passConfig.approvedMerchants.length === 0) {
+      throw new Error('EdgePass.create: approvedMerchants cannot be empty');
+    }
+    if (passConfig.expiryMs <= 0) {
+      throw new Error('EdgePass.create: expiryMs must be greater than 0');
+    }
+    if (passConfig.budget <= BigInt(0)) {
+      throw new Error('EdgePass.create: budget must be greater than 0');
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
 
     const packageId = EDGE_PACKAGE_ID[this.config.network];
+    if (!packageId) {
+      throw new Error(
+        `EdgePass.create: no package ID configured for network "${this.config.network}". ` +
+        `Update EDGE_PACKAGE_ID in constants.ts after deploying the Move contract.`
+      );
+    }
 
     tx.moveCall({
       target: `${packageId}::edge_pass::create_pass`,
@@ -175,11 +212,20 @@ export class EdgePass {
 
   /**
    * Execute a transaction against an EdgePass.
-   * Fires 'approved', 'escalated', or 'blocked' events automatically.
+   *
+   * Returns one of four statuses:
+   * - 'approved'  — executed on-chain successfully
+   * - 'escalated' — exceeds threshold, needs human approval
+   * - 'blocked'   — policy rejected the transaction
+   * - 'error'     — network/signing failure, transaction NOT submitted
+   *
+   * Events fire for approved/escalated/blocked only.
+   * Check outcome.status === 'error' separately for infrastructure failures.
    *
    * @example
    * sdk.on('approved', ({ outcome }) => console.log('tx:', outcome.digest));
    * const outcome = await sdk.execute(pass, { merchant, amount }, signer);
+   * if (outcome.status === 'error') handleInfrastructureFailure(outcome.reason);
    */
   async execute(
     pass: EdgePassObject,
@@ -188,13 +234,16 @@ export class EdgePass {
   ): Promise<TransactionOutcome> {
     const outcome = await this.engine.execute(pass, request, signer);
 
-    // Fire event listeners
-    this.emit({
-      type:    outcome.status,
-      outcome: outcome as any,
-      pass,
-      request,
-    });
+    // Fire events for policy outcomes only
+    // 'error' status = infrastructure failure, not a policy decision
+    if (outcome.status !== 'error') {
+      this.emit({
+        type:    outcome.status,
+        outcome: outcome as any,
+        pass,
+        request,
+      });
+    }
 
     return outcome;
   }
@@ -208,6 +257,8 @@ export class EdgePass {
 
   /**
    * Fetch a live EdgePass from Sui.
+   * Returns null if not found.
+   * Throws if objectId is invalid or a network error occurs.
    */
   async fetch(objectId: string): Promise<EdgePassObject | null> {
     return this.engine.fetchPass(objectId);

@@ -378,3 +378,15 @@ test('multiple listeners fire for same event', async () => {
 
   assertEqual(count, 2, 'both listeners should fire');
 });
+
+// ── Summary
+// ── Summary ───────────────────────────────────────────────────────────────────
+
+console.log(`\n${'─'.repeat(40)}`);
+console.log(`  ${passed} passed · ${failed} failed`);
+if (failed > 0) {
+  console.error(`\n  ✗ ${failed} test(s) failed`);
+  (process as any).exit(1);
+} else {
+  console.log(`\n  ✅ All ${passed} tests passing`);
+}
