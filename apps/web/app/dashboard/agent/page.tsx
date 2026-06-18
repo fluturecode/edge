@@ -227,7 +227,7 @@ export default function AgentPage() {
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 12, padding: 0, display: 'block' }}>back</button>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <span style={{ background: T.purpleDim, border: '1px solid ' + T.purpleBorder, color: T.purple, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>CLAUDE AGENT</span>
-            <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>TESTNET</span>
+            <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>MAINNET</span>
           </div>
           <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
           <p style={{ color: T.grey2, fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>

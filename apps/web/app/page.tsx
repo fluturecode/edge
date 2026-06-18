@@ -116,7 +116,7 @@ export default function Home() {
 
       <div style={{ maxWidth: 500, width: '100%' }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
-          {['FESTIVAL MODE DEMO', 'TESTNET'].map((label, i) => (
+          {['FESTIVAL MODE DEMO', 'MAINNET'].map((label, i) => (
             <span key={label} style={{ background: i === 0 ? 'rgba(77,162,255,0.12)' : T.tealDim, border: `1px solid ${i === 0 ? 'rgba(77,162,255,0.3)' : T.tealBorder}`, color: i === 0 ? T.blue : T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>{label}</span>
           ))}
         </div>
