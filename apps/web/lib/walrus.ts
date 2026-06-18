@@ -2,8 +2,8 @@
 // Reads use public aggregators (no auth needed)
 // Writes require a funded wallet — handled server-side post-contract deploy
 
-const WALRUS_AGGREGATOR = 'https://aggregator.walrus-mainnet.walrus.space';
-const WALRUS_PUBLISHER = 'https://publisher.walrus-mainnet.walrus.space';
+const WALRUS_AGGREGATOR = 'https://walrus-mainnet.brightlystake.com';
+const WALRUS_PUBLISHER = 'https://walrus-mainnet-publisher-1.staketab.org:443';
 
 export interface AuditLogEntry {
   passId: string;
