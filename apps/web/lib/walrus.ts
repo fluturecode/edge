@@ -35,7 +35,7 @@ export async function writeAuditLogs(
       version: '1.0.0',
     };
 
-    const response = await fetch(`${WALRUS_PUBLISHER}/v1/blobs?epochs=3`, {
+    const response = await fetch('/api/walrus', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bundle),
