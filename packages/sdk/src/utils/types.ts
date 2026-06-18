@@ -1,31 +1,32 @@
 export interface EdgePassConfig {
-  budget: bigint;              // total spend limit in MIST (1 SUI = 1_000_000_000 MIST)
-  autoThreshold: bigint;       // auto-approve transactions below this amount
-  escalateThreshold: bigint;   // escalate transactions above this amount
-  approvedMerchants: string[]; // list of approved merchant addresses or names
-  expiryMs: number;            // expiry duration in milliseconds
-  owner: string;               // Sui address of the pass owner
+  budget: bigint;
+  autoThreshold: bigint;
+  escalateThreshold: bigint;
+  maxPerTransaction?: bigint;  // optional per-transaction cap
+  approvedMerchants: string[];
+  expiryMs: number;
+  owner: string;
 }
 
 export interface EdgePassObject {
-  id: string;                  // Sui object ID of the on-chain EdgePass
+  id: string;
   config: EdgePassConfig;
-  spent: bigint;               // total amount spent so far
+  spent: bigint;
   active: boolean;
   createdAt: number;
   expiresAt: number;
 }
 
 export interface TransactionRequest {
-  merchant: string;            // merchant identifier
-  amount: bigint;              // amount in MIST
+  merchant: string;
+  amount: bigint;
   metadata?: Record<string, string>;
 }
 
 export type TransactionOutcome =
-  | { status: "approved"; digest: string; auto: true }
-  | { status: "escalated"; reason: string; auto: false }
-  | { status: "blocked"; reason: string; auto: false };
+  | { status: 'approved'; digest: string; objectId?: string; auto: true }
+  | { status: 'escalated'; reason: string; auto: false }
+  | { status: 'blocked'; reason: string; auto: false };
 
 export interface PolicyValidation {
   allowed: boolean;
@@ -33,7 +34,7 @@ export interface PolicyValidation {
   reason: string;
 }
 
-export type Network = "mainnet" | "testnet" | "devnet";
+export type Network = 'mainnet' | 'testnet' | 'devnet';
 
 export interface EdgeSDKConfig {
   network: Network;
