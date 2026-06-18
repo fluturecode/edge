@@ -245,3 +245,136 @@ if (failed > 0) {
 } else {
   console.log(`\n  ✅ All ${passed} tests passing`);
 }
+
+// ── Events system ─────────────────────────────────────────────────────────────
+
+console.log('\n📋 Events system');
+
+test('on() returns sdk instance for chaining', () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  const result = sdk.on('approved', () => {});
+  assert(result === sdk, 'should be chainable');
+});
+
+test('fires approved event on auto-approve', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let fired = false;
+
+  sdk.on('approved', ({ outcome, request }) => {
+    fired = true;
+    assertEqual(outcome.status, 'approved', 'event status');
+    assertEqual(request.merchant, 'Shuttle Express', 'event merchant');
+  });
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'Shuttle Express',
+    amount: BigInt(18) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assert(fired, 'approved event should have fired');
+});
+
+test('fires blocked event on policy rejection', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let fired = false;
+
+  sdk.on('blocked', ({ outcome }) => {
+    fired = true;
+    assertEqual(outcome.status, 'blocked', 'event status');
+  });
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'ShadyTokens.xyz',
+    amount: BigInt(1) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assert(fired, 'blocked event should have fired');
+});
+
+test('fires escalated event above threshold', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let fired = false;
+
+  sdk.on('escalated', ({ outcome }) => {
+    fired = true;
+    assertEqual(outcome.status, 'escalated', 'event status');
+  });
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'Shuttle Express',
+    amount: BigInt(149) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assert(fired, 'escalated event should have fired');
+});
+
+test('off() removes listener', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let count = 0;
+  const listener = () => { count++; };
+
+  sdk.on('blocked', listener);
+  sdk.off('blocked', listener);
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'ShadyTokens.xyz',
+    amount: BigInt(1) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assertEqual(count, 0, 'listener should not fire after off()');
+});
+
+test('removeAllListeners() clears all events', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let count = 0;
+
+  sdk.on('approved', () => { count++; });
+  sdk.on('blocked', () => { count++; });
+  sdk.removeAllListeners();
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'ShadyTokens.xyz',
+    amount: BigInt(1) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assertEqual(count, 0, 'no listeners should fire after removeAllListeners()');
+});
+
+test('multiple listeners fire for same event', async () => {
+  const sdk = new EdgePass({ network: 'testnet', enokiApiKey: 'test' });
+  let count = 0;
+
+  sdk.on('blocked', () => { count++; });
+  sdk.on('blocked', () => { count++; });
+
+  const mockSigner = {
+    signAndExecute: async () => ({ digest: '0xmock', objectId: null }),
+  };
+
+  await sdk.execute(mockPass, {
+    merchant: 'ShadyTokens.xyz',
+    amount: BigInt(1) * MIST_PER_SUI,
+  }, mockSigner as any);
+
+  assertEqual(count, 2, 'both listeners should fire');
+});

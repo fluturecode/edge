@@ -21,10 +21,26 @@ import {
 // Sui Clock object ID — shared object, always the same address
 const SUI_CLOCK_OBJECT_ID = '0x0000000000000000000000000000000000000000000000000000000000000006';
 
+// ── Event types ───────────────────────────────────────────────────────────────
+
+export type EdgePassEventType = 'approved' | 'escalated' | 'blocked';
+
+export type EdgePassEventPayload =
+  | { type: 'approved';  outcome: TransactionOutcome & { status: 'approved'  }; pass: EdgePassObject; request: TransactionRequest }
+  | { type: 'escalated'; outcome: TransactionOutcome & { status: 'escalated' }; pass: EdgePassObject; request: TransactionRequest }
+  | { type: 'blocked';   outcome: TransactionOutcome & { status: 'blocked'   }; pass: EdgePassObject; request: TransactionRequest };
+
+type EventListener<T extends EdgePassEventType> = (
+  payload: Extract<EdgePassEventPayload, { type: T }>
+) => void | Promise<void>;
+
+// ── EdgePass class ────────────────────────────────────────────────────────────
+
 export class EdgePass {
   private client: SuiClient;
   private engine: ExecutionEngine;
   private config: EdgeSDKConfig;
+  private listeners: Map<EdgePassEventType, Set<Function>> = new Map();
 
   constructor(config: EdgeSDKConfig) {
     this.config = config;
@@ -32,6 +48,75 @@ export class EdgePass {
     this.engine = new ExecutionEngine(config.network);
   }
 
+  // ── Event system ────────────────────────────────────────────────────────────
+
+  /**
+   * Subscribe to transaction outcomes.
+   *
+   * @example
+   * sdk.on('approved', ({ outcome, pass }) => {
+   *   console.log('executed:', outcome.digest);
+   * });
+   *
+   * sdk.on('escalated', ({ outcome, request }) => {
+   *   notifyUser(`Approve $${request.amount} at ${request.merchant}?`);
+   * });
+   *
+   * sdk.on('blocked', ({ outcome }) => {
+   *   logger.warn('blocked:', outcome.reason);
+   * });
+   */
+  on<T extends EdgePassEventType>(event: T, listener: EventListener<T>): this {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(listener);
+    return this; // chainable
+  }
+
+  /**
+   * Unsubscribe a specific listener.
+   */
+  off<T extends EdgePassEventType>(event: T, listener: EventListener<T>): this {
+    this.listeners.get(event)?.delete(listener);
+    return this;
+  }
+
+  /**
+   * Remove all listeners for an event (or all events if none specified).
+   */
+  removeAllListeners(event?: EdgePassEventType): this {
+    if (event) {
+      this.listeners.delete(event);
+    } else {
+      this.listeners.clear();
+    }
+    return this;
+  }
+
+  private emit(payload: EdgePassEventPayload): void {
+    const listeners = this.listeners.get(payload.type);
+    if (!listeners) return;
+    for (const listener of listeners) {
+      try {
+        listener(payload);
+      } catch (e) {
+        console.error(`EdgePass event listener error (${payload.type}):`, e);
+      }
+    }
+  }
+
+  // ── Static helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Creates an EdgePassConfig from a template with optional overrides.
+   *
+   * @example
+   * const config = EdgePass.fromTemplate('festival', {
+   *   approvedMerchants: ['Shuttle Express', 'Hydra Bar'],
+   *   owner: userAddress,
+   * });
+   */
   static fromTemplate(
     template: EdgePassTemplate,
     overrides: Partial<EdgePassConfig> & { owner: string }
@@ -44,6 +129,11 @@ export class EdgePass {
     };
   }
 
+  // ── Core API ────────────────────────────────────────────────────────────────
+
+  /**
+   * Mint a new EdgePass on Sui.
+   */
   async create(
     passConfig: EdgePassConfig,
     signer: { signAndExecute: (tx: Transaction, kindBytes: string) => Promise<{ digest: string; objectId?: string | null }> }
@@ -69,9 +159,7 @@ export class EdgePass {
       ],
     });
 
-    // All arguments statically known — no RPC needed, instant build
     const kindBytes = toBase64(await tx.build({ onlyTransactionKind: true }));
-
     const result = await signer.signAndExecute(tx, kindBytes);
 
     const now = Date.now();
@@ -85,22 +173,49 @@ export class EdgePass {
     };
   }
 
+  /**
+   * Execute a transaction against an EdgePass.
+   * Fires 'approved', 'escalated', or 'blocked' events automatically.
+   *
+   * @example
+   * sdk.on('approved', ({ outcome }) => console.log('tx:', outcome.digest));
+   * const outcome = await sdk.execute(pass, { merchant, amount }, signer);
+   */
   async execute(
     pass: EdgePassObject,
     request: TransactionRequest,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> }
   ): Promise<TransactionOutcome> {
-    return this.engine.execute(pass, request, signer);
+    const outcome = await this.engine.execute(pass, request, signer);
+
+    // Fire event listeners
+    this.emit({
+      type:    outcome.status,
+      outcome: outcome as any,
+      pass,
+      request,
+    });
+
+    return outcome;
   }
 
+  /**
+   * Preview outcome without executing. Zero network calls.
+   */
   validate(pass: EdgePassObject, request: TransactionRequest) {
     return PolicyEngine.validate(pass, request);
   }
 
+  /**
+   * Fetch a live EdgePass from Sui.
+   */
   async fetch(objectId: string): Promise<EdgePassObject | null> {
     return this.engine.fetchPass(objectId);
   }
 
+  /**
+   * Revoke an EdgePass on-chain.
+   */
   async revoke(
     pass: EdgePassObject,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> }
@@ -115,10 +230,16 @@ export class EdgePass {
     return signer.signAndExecute(tx);
   }
 
+  /**
+   * Returns remaining budget in MIST.
+   */
   remainingBudget(pass: EdgePassObject): bigint {
     return PolicyEngine.remainingBudget(pass);
   }
 
+  /**
+   * Returns true if the pass is active and not expired.
+   */
   isValid(pass: EdgePassObject): boolean {
     return PolicyEngine.isValid(pass);
   }
