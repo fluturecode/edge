@@ -437,7 +437,9 @@ interface TransactionRequest {
 type TransactionOutcome =
   | { status: 'approved';  digest: string; objectId?: string; auto: true  }
   | { status: 'escalated'; reason: string;                    auto: false }
-  | { status: 'blocked';   reason: string;                    auto: false };
+  | { status: 'blocked';   reason: string;                    auto: false }
+  | { status: 'error';     reason: string; code?: string;     auto: false };
+  // error = infrastructure failure — transaction NOT submitted to chain
 ```
 
 ### `PolicyValidation`
