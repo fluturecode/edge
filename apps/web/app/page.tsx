@@ -12,7 +12,7 @@ const T = {
 };
 
 const LINES = [
-  { text: '$ edge init --network testnet', color: T.grey2 },
+  { text: '$ edge init --network mainnet', color: T.grey2 },
   { text: '✓ zkLogin provider loaded', color: T.teal },
   { text: '✓ Sui RPC connected · 94ms latency', color: T.teal },
   { text: '✓ Enoki sponsorship active · gas covered', color: T.teal },
@@ -60,7 +60,7 @@ export default function Home() {
     // Fetch current epoch dynamically
     let maxEpoch = 1137; // fallback
     try {
-      const epochRes = await fetch('https://fullnode.testnet.sui.io:443', {
+      const epochRes = await fetch('https://fullnode.mainnet.sui.io:443', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

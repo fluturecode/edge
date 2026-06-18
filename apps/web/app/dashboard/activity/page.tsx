@@ -115,7 +115,7 @@ function TxRow({ tx }: { tx: TxItem }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {tx.digest && (
               <a
-                href={'https://suiscan.xyz/testnet/tx/' + tx.digest}
+                href={'https://suiscan.xyz/mainnet/tx/' + tx.digest}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.blue, textDecoration: 'none' }}
@@ -220,7 +220,7 @@ export default function Activity() {
       try {
         const passId = localStorage.getItem('edge_pass_id');
         if (passId) {
-          const sdk = new EdgePass({ network: 'testnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+          const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
           const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
           const passObj = await sdk.fetch(passId);
           if (passObj) {

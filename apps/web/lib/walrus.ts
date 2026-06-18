@@ -2,8 +2,8 @@
 // Reads use public aggregators (no auth needed)
 // Writes require a funded wallet — handled server-side post-contract deploy
 
-const WALRUS_AGGREGATOR = 'https://aggregator.walrus-testnet.walrus.space';
-const WALRUS_PUBLISHER = 'https://publisher.walrus-testnet.walrus.space';
+const WALRUS_AGGREGATOR = 'https://aggregator.walrus-mainnet.walrus.space';
+const WALRUS_PUBLISHER = 'https://publisher.walrus-mainnet.walrus.space';
 
 export interface AuditLogEntry {
   passId: string;
@@ -81,5 +81,5 @@ export async function readRawBlob(blobId: string): Promise<string | null> {
 }
 
 export function walrusExplorerUrl(blobId: string): string {
-  return `https://walruscan.com/testnet/blob/${blobId}`;
+  return `https://walruscan.com/mainnet/blob/${blobId}`;
 }

@@ -42,7 +42,7 @@ export default function CreatePass() {
   };
 
   const logSteps = [
-    { prefix: '$', color: T.grey2, text: 'edge create-pass --network testnet', delay: 0 },
+    { prefix: '$', color: T.grey2, text: 'edge create-pass --network mainnet', delay: 0 },
     { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
     { prefix: '✓', color: T.teal, text: 'Enoki sponsorship confirmed · gas covered', delay: 800 },
     { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
@@ -52,7 +52,7 @@ export default function CreatePass() {
     { prefix: '→', color: T.grey2, text: 'escalate_threshold: ' + (escalateNum * 1_000_000_000) + ' MIST', delay: 2250, indent: true },
     { prefix: '→', color: T.grey2, text: 'expiry: ' + (expiry * 3_600_000) + 'ms · ' + selectedMerchants.length + ' merchants', delay: 2450, indent: true },
     { prefix: '✓', color: T.teal, text: 'PTB constructed · 2 transactions', delay: 2800 },
-    { prefix: '$', color: T.grey1, text: 'submitting to Sui testnet...', delay: 3200 },
+    { prefix: '$', color: T.grey1, text: 'submitting to Sui mainnet...', delay: 3200 },
   ];
 
   const handleCreate = async () => {
@@ -75,7 +75,7 @@ export default function CreatePass() {
 
     try {
       const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-      const sdk = new EdgePass({ network: 'testnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+      const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
       const owner = getUserAddress();
       if (!owner) throw new Error('Not authenticated');
 
@@ -115,7 +115,7 @@ export default function CreatePass() {
         merchants: selectedMerchants,
         id: pass.id,
         packageId: PACKAGE_ID,
-        network: 'testnet',
+        network: 'mainnet',
         spent: 0,
         active: true,
         createdAt: Date.now(),
@@ -347,7 +347,7 @@ export default function CreatePass() {
           </button>
 
           <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, margin: 0, fontFamily: 'DM Mono, monospace' }}>
-            zkLogin verified · PTB atomic execution · Sui testnet
+            zkLogin verified · PTB atomic execution · Sui mainnet
           </p>
         </div>
       </div>

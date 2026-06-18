@@ -7,7 +7,7 @@ export const NETWORK_URLS: Record<string, string> = {
 };
 
 export const EDGE_PACKAGE_ID: Record<string, string> = {
-  mainnet: '',
+  mainnet: '0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde',
   testnet: '0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d',
   devnet:  '',
 };

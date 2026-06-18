@@ -5,7 +5,7 @@ import { getZkLoginSignature, genAddressSeed } from '@mysten/zklogin';
 import { SuiClient } from '@mysten/sui/client';
 import { jwtDecode } from 'jwt-decode';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
+const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
 
 export async function POST(req: NextRequest) {
   const { txBytes, ephemeralKey, zkProof, maxEpoch, idToken } = await req.json();

@@ -101,14 +101,14 @@ export default function AgentPage() {
 
     addMessage({ type: 'system', text: 'Edge Agent v1.0 initializing...' });
     await new Promise(r => setTimeout(r, 500));
-    addMessage({ type: 'system', text: 'Loading EdgePass policy from Sui testnet...' });
+    addMessage({ type: 'system', text: 'Loading EdgePass policy from Sui mainnet...' });
     await new Promise(r => setTimeout(r, 800));
     addMessage({ type: 'system', text: 'Policy loaded. Budget: $' + BUDGET + ' · Auto: <$' + AUTO_THRESHOLD + ' · Escalate: >$' + ESCALATE_THRESHOLD });
     await new Promise(r => setTimeout(r, 500));
     addMessage({ type: 'system', text: 'Claude agent online. Beginning autonomous execution...' });
     await new Promise(r => setTimeout(r, 800));
 
-    const sdk = new EdgePass({ network: 'testnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+    const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
 
     let currentSpent = 0;
@@ -317,7 +317,7 @@ export default function AgentPage() {
                       </div>
                       {msg.digest && (
                         <a
-                          href={'https://suiscan.xyz/testnet/tx/' + msg.digest}
+                          href={'https://suiscan.xyz/mainnet/tx/' + msg.digest}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}

@@ -22,7 +22,7 @@ export async function generateZkProof({ idToken, ephemeralKey, randomness, maxEp
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      network: 'testnet',
+      network: 'mainnet',
       ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
       maxEpoch,
       randomness: randomness.toString(),

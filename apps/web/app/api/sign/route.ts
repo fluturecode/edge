@@ -4,7 +4,7 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { getZkLoginSignature } from '@mysten/zklogin';
 import { SuiClient } from '@mysten/sui/client';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
+const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();

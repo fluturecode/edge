@@ -2,7 +2,7 @@ import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { toBase64 } from '@mysten/sui/utils';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.testnet.sui.io:443' });
+const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
 
 export function getUserAddress(): string | null {
   if (typeof window === 'undefined') return null;
@@ -33,7 +33,7 @@ export function buildSigner(_enokiApiKey: string) {
 
       // Fetch sender's own gas coins to avoid Enoki-tainted gas objects
       const coins = await suiClient.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
-      if (!coins.data.length) throw new Error('No SUI coins found. Fund your address at faucet.testnet.sui.io');
+      if (!coins.data.length) throw new Error('No SUI coins found. Fund your address at faucet.mainnet.sui.io');
 
       const gasCoin = coins.data[0];
 

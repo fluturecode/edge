@@ -107,7 +107,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>EdgePass · Festival Mode</div>
-                  <a href={`https://suiscan.xyz/testnet/object/${pass.id}`} target="_blank" rel="noopener noreferrer"
+                  <a href={`https://suiscan.xyz/mainnet/object/${pass.id}`} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, textDecoration: 'none' }}>
                     {pass.id.slice(0, 10)}...{pass.id.slice(-8)} ↗
                   </a>
@@ -144,12 +144,12 @@ export default function Dashboard() {
               {pass.packageId && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>contract:</span>
-                  <a href={`https://suiscan.xyz/testnet/object/${pass.packageId}`} target="_blank" rel="noopener noreferrer"
+                  <a href={`https://suiscan.xyz/mainnet/object/${pass.packageId}`} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, textDecoration: 'none' }}>
                     {pass.packageId.slice(0, 10)}...{pass.packageId.slice(-8)} ↗
                   </a>
                   <span style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '2px 8px', borderRadius: 4 }}>
-                    {pass.network || 'testnet'}
+                    {pass.network || 'mainnet'}
                   </span>
                 </div>
               )}
