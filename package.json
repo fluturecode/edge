@@ -1,12 +1,14 @@
 {
   "name": "edge",
   "version": "1.0.0",
-  "description": "",
+  "description": "Programmable trust infrastructure for autonomous AI agents on Sui",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "cd packages/sdk && pnpm test",
+    "build": "cd packages/sdk && pnpm build",
+    "dev": "cd apps/web && pnpm dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "keywords": ["sui", "autonomous-agents", "trust-delegation", "edgepass"],
+  "author": "fluturecode",
+  "license": "MIT"
 }
