@@ -25,7 +25,7 @@
 
 <br />
 
-[**Live Demo →**](https://edge-web-cyan.vercel.app) &nbsp;·&nbsp; [**npm →**](https://npmjs.com/package/@edge-protocol/sdk) &nbsp;·&nbsp; [**Contract →**](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d) &nbsp;·&nbsp; [**Docs →**](packages/sdk/DOCS.md)
+[**Live Demo →**](https://edge-web-git-main-fluturecodes-projects.vercel.app) &nbsp;·&nbsp; [**npm →**](https://npmjs.com/package/@edge-protocol/sdk) &nbsp;·&nbsp; [**Contract →**](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d) &nbsp;·&nbsp; [**Docs →**](packages/sdk/DOCS.md)
 
 <br />
 
@@ -289,6 +289,26 @@ Five primitives. All native to Sui. None exist anywhere else.
 
 <br />
 
+
+## 🔒 Security Model
+
+Edge has two enforcement layers:
+
+**Layer 1 — TypeScript PolicyEngine** — pre-flight, zero network calls, under 1ms. Fast feedback before any chain interaction. Can be bypassed by a compromised agent — treat as a convenience layer.
+
+**Layer 2 — Sui Move Contract** — on-chain enforcement by the Sui VM. Cannot be bypassed. Budget, expiry, and merchant allowlist validated independently at the protocol level. This is the source of truth.
+
+```
+sdk.validate()  →  TypeScript (instant preview, saves gas on rejections)
+sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof)
+```
+
+For production deployments, always execute via the Move contract. The TypeScript layer is a preview — the chain is the guarantee.
+
+**Known V2 improvements:** rolling time windows, on-chain policy signatures, merchant address verification, rate limiting.
+
+<br />
+
 ## 🌐 Use Cases
 
 The same three lines work across every vertical:
@@ -415,17 +435,24 @@ edge/
 - [x] CI/CD — GitHub Actions contract deployment
 
 **Phase 2 — Trust Layer** 🔨 *in progress*
+- [x] Events — `on('approved')`, `on('escalated')`, `on('blocked')`
+- [ ] Rolling time windows — `maxTransactionsPerHour`
+- [ ] On-chain policy signatures — tamper-proof policy commitment
+- [ ] Merchant address verification — verified Sui addresses on-chain
+- [ ] Multi-token support — USDC, USDT, any Sui coin
 - [ ] Agent reputation system — on-chain scoring across sessions
 - [ ] Composable delegation — org hierarchy trust trees
-- [ ] Multi-token support — USDC, USDT, any Sui coin
-- [ ] Events — `on('approved')`, `on('escalated')`, `on('blocked')`
 - [ ] Mainnet deployment
 
-**Phase 3 — Protocol** 📋 *coming*
+**Phase 3 — Protocol & Business** 📋 *coming*
+- [ ] Managed escalation dashboard — proprietary SaaS approval UI
+- [ ] Policy feeds — real-time risk scoring for Sui contracts
+- [ ] Enterprise guardrails — SOC2, SIEM, Fireblocks adapter
 - [ ] Cross-agent coordination — multi-agent quorum execution
 - [ ] Intent-based policies — natural language → on-chain rules
 - [ ] Edge Protocol DAO — community governance
 - [ ] Cross-chain EdgePasses
+- [ ] Apache 2.0 license migration
 
 <br />
 
@@ -434,6 +461,22 @@ edge/
 > *Before Stripe, every developer built their own payment processing. After Stripe, you call `stripe.charge()`.*
 >
 > *Edge is `stripe.charge()` for autonomous agent trust.*
+
+## 🏗 Open-Core Model
+
+Edge follows an open-core architecture:
+
+```
+PROPRIETARY (future business):
+  Managed escalation UI · Enterprise auth · Policy feeds · Compliance exports
+
+OPEN SOURCE (always free):
+  TypeScript SDK · Move contracts · Walrus audit parsers · PolicyEngine
+```
+
+The SDK, Move contracts, and PolicyEngine are and will always be open source. Enterprise features — managed escalation dashboards, real-time risk scoring, SOC2 compliance integrations — are the business layer built on top.
+
+This is the Stripe model: open API, proprietary dashboard.
 
 <br />
 
@@ -472,4 +515,3 @@ Built with ♥ by [**@fluturecode**](https://github.com/fluturecode) for [**Sui 
 MIT License
 
 </div>
->

@@ -233,6 +233,24 @@ pnpm test
 34/34 passing ✅
 ```
 
+
+---
+
+## Security Model
+
+Edge has two enforcement layers:
+
+**Layer 1 — TypeScript PolicyEngine** — pre-flight validation, zero network calls, under 1ms. Can be bypassed by a malicious agent runtime. Use as a UX convenience, not a security boundary.
+
+**Layer 2 — Sui Move Contract** — on-chain enforcement by the Sui VM. Cannot be bypassed. The EdgePass object validates budget, expiry, and merchant allowlist independently. This is the source of truth.
+
+```
+sdk.validate()  →  TypeScript check (fast preview, no gas)
+sdk.execute()   →  TypeScript check + Move contract check (atomic, final)
+```
+
+For production: always execute via the Move contract. The TypeScript layer is a preview — the chain is the guarantee.
+
 ---
 
 ## Move Contract
