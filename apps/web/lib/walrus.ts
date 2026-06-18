@@ -36,7 +36,7 @@ export async function writeAuditLogs(
     };
 
     const response = await fetch('/api/walrus', {
-      method: 'PUT',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bundle),
     });
