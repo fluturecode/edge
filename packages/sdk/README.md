@@ -202,7 +202,7 @@ Every execution writes an immutable receipt to Walrus — decentralized, tamper-
 // After execution, the Walrus blob ID is available
 const outcome = await sdk.execute(pass, request, signer);
 // audit receipt automatically written to Walrus
-// verifiable at walruscan.com/testnet/blob/{blobId}
+// verifiable at walruscan.com/mainnet/blob/{blobId}
 ```
 
 ---
@@ -259,7 +259,7 @@ pnpm test
 ## ⛓ Move Contract
 
 ```
-Package:  0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+Package:  0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
 Network:  Sui Testnet (Mainnet coming)
 ```
 
