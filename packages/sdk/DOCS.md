@@ -280,6 +280,67 @@ if (!sdk.isValid(pass)) {
 
 ---
 
+### `sdk.on(event, listener)` → `this`
+
+Subscribe to transaction outcomes. Fires automatically after every `sdk.execute()` call. Returns the SDK instance for chaining.
+
+```typescript
+sdk
+  .on('approved', ({ outcome, pass, request }) => {
+    console.log('executed:', outcome.digest);
+    updateBudgetUI(pass);
+  })
+  .on('escalated', ({ outcome, request }) => {
+    notifyUser(`Approve $${request.amount} at ${request.merchant}?`);
+  })
+  .on('blocked', ({ outcome, request }) => {
+    logger.warn(`blocked: ${outcome.reason}`);
+  });
+
+// events fire automatically on execute
+await sdk.execute(pass, request, signer);
+```
+
+**Event payload:**
+
+```typescript
+// approved
+{ type: 'approved', outcome: { status: 'approved', digest: string, auto: true }, pass, request }
+
+// escalated
+{ type: 'escalated', outcome: { status: 'escalated', reason: string, auto: false }, pass, request }
+
+// blocked
+{ type: 'blocked', outcome: { status: 'blocked', reason: string, auto: false }, pass, request }
+```
+
+---
+
+### `sdk.off(event, listener)` → `this`
+
+Remove a specific listener.
+
+```typescript
+const onApproved = ({ outcome }) => console.log(outcome.digest);
+
+sdk.on('approved', onApproved);
+// later...
+sdk.off('approved', onApproved);
+```
+
+---
+
+### `sdk.removeAllListeners(event?)` → `this`
+
+Remove all listeners for an event, or all events if none specified.
+
+```typescript
+sdk.removeAllListeners('approved'); // remove all approved listeners
+sdk.removeAllListeners();           // remove all listeners
+```
+
+---
+
 ## Templates
 
 Pre-configured trust boundaries for common use cases. Every template is a starting point — override any field.
@@ -758,7 +819,16 @@ cd packages/sdk && pnpm test
   ✓ all templates have autoThreshold < escalateThreshold
   ✓ all templates have escalateThreshold < budget
 
-27 passed · 0 failed ✅
+📋 Events system
+  ✓ on() returns sdk instance for chaining
+  ✓ fires approved event on auto-approve
+  ✓ fires blocked event on policy rejection
+  ✓ fires escalated event above threshold
+  ✓ off() removes listener
+  ✓ removeAllListeners() clears all events
+  ✓ multiple listeners fire for same event
+
+34 passed · 0 failed ✅
 ```
 
 ---

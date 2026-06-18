@@ -23,7 +23,7 @@
 ## Repo & Links
 
 - **GitHub:** https://github.com/fluturecode/edge
-- **Live app:** https://edge-web-cyan.vercel.app
+- **Live app:** https://edge-web-git-main-fluturecodes-projects.vercel.app
 - **npm:** https://npmjs.com/package/@edge-protocol/sdk
 - **Contract on Sui testnet:** https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
 - **Submission:** https://www.deepsurge.xyz/hackathons/b587dc0c-4cb8-4e63-ada5-519df38103bf
@@ -38,10 +38,10 @@
 - **AI agent demo** — Claude LLM makes autonomous decisions, executes via PolicyEngine
 - **Walrus audit logs** — real blobs on testnet
 - **Seal policy encryption** — policies encrypted and stored on Walrus
-- **SDK on npm** — `@edge-protocol/sdk@0.1.2` published and installable
+- **SDK on npm** — `@edge-protocol/sdk@0.5.0` published and installable
 - **Move contract** — deployed on Sui testnet
 - **GitHub Actions CI/CD** — automated contract deployment
-- **6/6 SDK tests passing**
+- **34/34 SDK tests passing**
 
 ---
 
@@ -77,7 +77,7 @@ File: `apps/web/.env.local` (never commit)
 NEXT_PUBLIC_ENOKI_API_KEY=enoki_public_eb0eeeb84f04768cf88a5d264bdf9ee6
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=522666980790-20qcuen79borlp62m9vjb3cgugi092n3.apps.googleusercontent.com
 NEXT_PUBLIC_SUI_NETWORK=testnet
-NEXT_PUBLIC_APP_URL=https://edge-web-cyan.vercel.app
+NEXT_PUBLIC_APP_URL=https://edge-web-git-main-fluturecodes-projects.vercel.app
 ENOKI_SECRET_KEY=enoki_private_d5807c3cb9c5fb1a2fb2f562380ef30b
 ANTHROPIC_API_KEY=<rotated — get from console.anthropic.com>
 ```
@@ -250,7 +250,7 @@ Claude receives the EdgePass policy as system context, reasons about a festival 
 
 ## New Chat Prompt
 
-> I'm building Edge — programmable trust infrastructure for autonomous agents on Sui, for Sui Overflow 2026 (Agentic Web track). Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. Contract on testnet: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d. SDK: @edge-protocol/sdk@0.1.2. AI agent working, zkLogin working, Walrus working. Read HANDOFF.md before continuing.
+> I'm building Edge — programmable trust infrastructure for autonomous agents on Sui, for Sui Overflow 2026 (Agentic Web track). Repo: github.com/fluturecode/edge. Live: edge-web-git-main-fluturecodes-projects.vercel.app. Contract on testnet: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d. SDK: @edge-protocol/sdk@0.5.0. AI agent working, zkLogin working, Walrus working. Read HANDOFF.md before continuing.
 
 ---
 

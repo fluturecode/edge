@@ -12,7 +12,7 @@
 
 **Give agents your rules, not your keys.**
 
-[Live Demo](https://edge-web-cyan.vercel.app) · [Full Docs](https://github.com/fluturecode/edge/blob/main/packages/sdk/DOCS.md) · [GitHub](https://github.com/fluturecode/edge)
+[Live Demo](https://edge-web-git-main-fluturecodes-projects.vercel.app) · [Full Docs](https://github.com/fluturecode/edge/blob/main/packages/sdk/DOCS.md) · [GitHub](https://github.com/fluturecode/edge)
 
 </div>
 
@@ -213,7 +213,7 @@ Festival Mode: Claude autonomously manages purchases within an EdgePass.
 3 transactions · $54.50 spent · 0 wallet popups
 ```
 
-[See it live →](https://edge-web-cyan.vercel.app)
+[See it live →](https://edge-web-git-main-fluturecodes-projects.vercel.app)
 
 ---
 
@@ -230,7 +230,7 @@ pnpm test
 ✓ blocks when budget exceeded
 ✓ blocks when expired
 ✓ blocks when inactive
-6/6 passing ✅
+34/34 passing ✅
 ```
 
 ---
