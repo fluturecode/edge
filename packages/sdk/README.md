@@ -139,7 +139,7 @@ type TransactionOutcome =
 // Example approved outcome
 {
   status:  'approved',
-  digest:  'AwGc1j8CJvsJtqMMj1cnoJP9uGgbUCGHJ2gVatKQ1y4d',
+  digest:  '0xabc123...txdigest',
   auto:    true,
 }
 
