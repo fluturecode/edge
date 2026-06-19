@@ -2,7 +2,7 @@ export interface EdgePassConfig {
   budget:             bigint;
   autoThreshold:      bigint;
   escalateThreshold:  bigint;
-  maxPerTransaction?: bigint;
+  maxPerTransaction?: bigint;  // optional per-transaction cap
   approvedMerchants:  string[];
   expiryMs:           number;
   owner:              string;
@@ -15,13 +15,6 @@ export interface EdgePassObject {
   active:    boolean;
   createdAt: number;
   expiresAt: number;
-  // Object reference for optimized PTB construction — avoids extra RPC round trip
-  // Populated by sdk.fetch(), undefined when created locally via sdk.create()
-  objectRef?: {
-    objectId: string;
-    version:  string;
-    digest:   string;
-  };
 }
 
 export interface TransactionRequest {
@@ -35,8 +28,9 @@ export interface TransactionRequest {
  *
  * approved  — transaction executed on-chain successfully
  * escalated — transaction exceeds threshold, needs human approval
- * blocked   — transaction rejected by policy
+ * blocked   — transaction rejected by policy (merchant not approved, budget exceeded, etc.)
  * error     — network or signing failure — transaction was NOT submitted to chain
+ *             Use this to distinguish infrastructure failures from policy rejections
  */
 export type TransactionOutcome =
   | { status: 'approved';  digest: string; objectId?: string; auto: true  }
