@@ -37,14 +37,6 @@ function BudgetRing({ total, spent }: { total: number; spent: number }) {
   );
 }
 
-const ECOSYSTEM = [
-  { label: 'zkLogin', color: T.teal },
-  { label: 'Sponsored Tx', color: T.gold },
-  { label: 'PTBs', color: T.blue },
-  { label: 'Walrus Logs', color: T.teal },
-  { label: 'Seal Policies', color: T.blue },
-];
-
 export default function Dashboard() {
   const router = useRouter();
   const [address, setAddress] = useState<string | null>(null);
@@ -65,15 +57,20 @@ export default function Dashboard() {
   const pass = passes[0];
 
   return (
-    <main style={{ background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
+    <main style={{ background: T.bg, minHeight: 'calc(100vh - 57px)', padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: 0 }}>Dashboard</h1>
             {user && <p style={{ fontSize: 12, color: T.grey2, margin: '4px 0 0', fontFamily: 'Inter, sans-serif' }}>{user.name} · {user.email}</p>}
-            {address && <p style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, margin: '4px 0 0', wordBreak: 'break-all' }}>{address.slice(0, 20)}...{address.slice(-8)}</p>}
+            {address && (
+              <p style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, margin: '4px 0 0', wordBreak: 'break-all' }}>
+                {address.slice(0, 20)}...{address.slice(-8)}
+              </p>
+            )}
           </div>
           <button onClick={() => router.push('/dashboard/create')}
             style={{ background: 'none', color: T.teal, border: `1px solid ${T.tealBorder}`, borderRadius: 10, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
@@ -83,38 +80,42 @@ export default function Dashboard() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-          {ECOSYSTEM.map(e => (
-            <span key={e.label} style={{ background: `${e.color}12`, border: `1px solid ${e.color}35`, color: e.color, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '4px 10px', borderRadius: 6 }}>
-              {e.label}
-            </span>
-          ))}
-        </div>
-
+        {/* No pass state */}
         {!pass ? (
           <div style={{ textAlign: 'center', padding: '56px 24px', border: `1px dashed ${T.border}`, borderRadius: 16, animation: 'fadeUp 0.4s ease-out' }}>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 20 }}>No EdgePasses found_</div>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.grey2, marginBottom: 8 }}>No EdgePasses found_</div>
+            <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif', marginBottom: 24 }}>
+              Create an EdgePass to define your agent's trust boundaries
+            </div>
             <button onClick={() => router.push('/dashboard/create')}
-              style={{ background: T.teal, color: T.bg, border: 'none', borderRadius: 10, padding: '13px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+              style={{ background: T.teal, color: T.bg, border: 'none', borderRadius: 10, padding: '13px 28px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
               Create your first EdgePass
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, animation: 'fadeUp 0.4s ease-out' }}>
+
+            {/* EdgePass card */}
             <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 18, padding: 'clamp(16px, 3vw, 22px)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: T.teal, opacity: 0.04, filter: 'blur(50px)', top: -50, right: -30, pointerEvents: 'none' }}/>
 
+              {/* Card header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
                 <div>
-                  <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>EdgePass · Festival Mode</div>
+                  <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>
+                    EdgePass · {pass.network === 'mainnet' ? 'Mainnet' : 'Mainnet'}
+                  </div>
                   <a href={`https://suiscan.xyz/mainnet/object/${pass.id}`} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, textDecoration: 'none' }}>
                     {pass.id.slice(0, 10)}...{pass.id.slice(-8)} ↗
                   </a>
                 </div>
-                <span style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>ACTIVE</span>
+                <span style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>
+                  ACTIVE
+                </span>
               </div>
 
+              {/* Budget ring + stats */}
               <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
                 <BudgetRing total={pass.budget} spent={pass.spent || 0} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, flex: 1, minWidth: 180 }}>
@@ -132,6 +133,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Merchants */}
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, color: T.grey2, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Approved Merchants</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -141,6 +143,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Contract link */}
               {pass.packageId && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>contract:</span>
@@ -149,18 +152,20 @@ export default function Dashboard() {
                     {pass.packageId.slice(0, 10)}...{pass.packageId.slice(-8)} ↗
                   </a>
                   <span style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '2px 8px', borderRadius: 4 }}>
-                    {pass.network || 'mainnet'}
+                    mainnet
                   </span>
                 </div>
               )}
             </div>
 
-            <button onClick={() => router.push('/dashboard/activity')}
-              style={{ width: '100%', padding: 13, background: 'none', border: `1px solid ${T.border}`, borderRadius: 12, color: T.grey1, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'DM Mono, monospace' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.color = T.teal; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}>
-              → Run Festival Mode Simulation
+            {/* Primary CTA */}
+            <button onClick={() => router.push('/dashboard/agent')}
+              style={{ width: '100%', padding: 16, background: T.teal, border: 'none', borderRadius: 12, color: T.bg, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'opacity 0.2s', letterSpacing: '0.01em' }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
+              Run Agent Demo →
             </button>
+
           </div>
         )}
       </div>
