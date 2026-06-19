@@ -351,6 +351,8 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
     setLoadingDecisions(true);
 
+    const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+    const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
     let currentSpent = 0, approvedCount = 0;
 
     const FALLBACK_DECISIONS: AgentDecision[] = scenario === 'festival' ? [
@@ -369,18 +371,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
     ];
 
-    const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
-    const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-
-    // Fetch pass ONCE before execution loop — thread updated pass through each transaction
-    let currentPassObj = await sdk.fetch(passId);
-    if (!currentPassObj) {
-      addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' });
-      setRunning(false); setDone(true); return;
-    }
-    addMessage({ type: 'system', text: 'EdgePass loaded from chain. Beginning execution...' });
-
-    const executeDecision = async (step: AgentDecision): Promise<void> => {
+    const executeDecision = async (step: AgentDecision) => {
       if (stopRef.current) return;
 
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
@@ -389,10 +380,10 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       await new Promise(r => setTimeout(r, 600));
 
       try {
-        const outcome = await sdk.execute(currentPassObj!, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
+        const passObj = await sdk.fetch(passId);
+        if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' }); return; }
 
-        // Thread the updated pass object to avoid version conflicts
-        if (outcome.pass) currentPassObj = outcome.pass;
+        const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
 
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
