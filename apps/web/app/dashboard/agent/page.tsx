@@ -254,10 +254,16 @@ Your EdgePass policy:
 - The last merchant in your list is NOT approved — include it to demonstrate policy enforcement
 
 Generate exactly 6 spending decisions that demonstrate:
-1. Several auto-approved transactions (under $${AUTO_THRESHOLD})
-2. At least one transaction between thresholds
-3. One attempt at the UNAPPROVED merchant (will be blocked)
-4. One transaction that exceeds $${ESCALATE_THRESHOLD} (will be escalated)
+1. Several auto-approved transactions (under $${AUTO_THRESHOLD}) — use realistic amounts like $18, $22, $45, $65
+2. One attempt at the UNAPPROVED merchant (will be blocked by policy) — use $0.01 amount
+3. One transaction of EXACTLY $$${Number(ESCALATE_THRESHOLD) + 70} at an approved merchant (MUST exceed $${ESCALATE_THRESHOLD} to trigger escalation)
+4. One additional auto-approved transaction under $${AUTO_THRESHOLD}
+
+CRITICAL RULES:
+- The escalation transaction amount MUST be $${Number(ESCALATE_THRESHOLD) + 70} or higher — never go under $${ESCALATE_THRESHOLD}
+- The blocked merchant must be the unapproved one
+- All other transactions must be under $${AUTO_THRESHOLD}
+- Total decisions: exactly 6
 
 Respond ONLY with a valid JSON array, no markdown, no explanation:
 [
