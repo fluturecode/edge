@@ -275,7 +275,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
   }
 ]`;
 
-  // Streaming fetch — yields decisions one by one as they arrive
   const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
     const response = await fetch('/api/agent', {
       method: 'POST',
@@ -308,24 +307,9 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       }
     }
 
-    // Handle any remaining buffer
     if (buffer.trim()) {
       try { onDecision(JSON.parse(buffer.trim())); } catch {}
     }
-  };
-
-  // Fallback non-streaming fetch
-  const fetchDecisions = async (): Promise<AgentDecision[]> => {
-    const response = await fetch('/api/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ system: systemPrompt, message: 'Generate my spending decisions for this session.', model: selectedModel }),
-    });
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '';
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
   };
 
   const runAgent = async () => {
@@ -405,28 +389,32 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
         addMessage({ type: 'system', text: 'Execution error — continuing to next decision' });
       }
 
-      await new Promise(r => setTimeout(r, 800));
+      // 2s delay between decisions — allows chain to settle before next transaction
+      await new Promise(r => setTimeout(r, 2000));
       if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); stopRef.current = true; }
     };
 
-    // Try streaming first — shows decisions as they arrive from Claude
+    // Collect all decisions first, then execute sequentially
+    let decisionsToExecute: AgentDecision[] = [];
+
     try {
       await fetchDecisionsStreaming(async (decision) => {
-        if (stopRef.current) return;
-        setLoadingDecisions(false);
-        await executeDecision(decision);
+        decisionsToExecute.push(decision);
       });
+      addMessage({ type: 'system', text: `${modelInfo.label} generated ${decisionsToExecute.length} decisions. Beginning execution...` });
     } catch (e) {
       console.error('Streaming failed, falling back:', e);
-      setLoadingDecisions(false);
+      decisionsToExecute = FALLBACK_DECISIONS;
       addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
-      for (const decision of FALLBACK_DECISIONS) {
-        if (stopRef.current) break;
-        await executeDecision(decision);
-      }
     }
 
     setLoadingDecisions(false);
+    await new Promise(r => setTimeout(r, 400));
+
+    for (const decision of decisionsToExecute) {
+      if (stopRef.current) break;
+      await executeDecision(decision);
+    }
 
     addMessage({ type: 'done', text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions` });
     setOutcomes([...outcomeItemsRef.current]);
@@ -460,7 +448,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
 
-        {/* Header */}
         <div style={{ marginBottom: 24 }}>
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 16, padding: 0, display: 'block' }}>← back</button>
 
@@ -471,7 +458,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
               : `${modelInfo.label} autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain.`}
           </p>
 
-          {/* Dynamic tagline */}
           <p style={{
             fontSize: 11, fontFamily: 'DM Mono, monospace', margin: '0 0 20px', letterSpacing: '0.04em', transition: 'color 0.3s',
             color: loadingDecisions ? T.gold : running ? T.teal : done ? T.teal : T.grey2,
@@ -485,7 +471,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
               : 'The AI decides. EdgePass enforces. The chain is the guarantee.'}
           </p>
 
-          {/* Switchers — only before run */}
           {!running && !done && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -527,7 +512,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             </div>
           )}
 
-          {/* Active config summary — shown during and after run */}
           {(running || done) && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
@@ -543,7 +527,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           )}
         </div>
 
-        {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
           {[
             { l: 'Budget', v: '$' + BUDGET.toLocaleString(), c: T.grey1 },
@@ -558,7 +541,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           ))}
         </div>
 
-        {/* Budget bar */}
         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Budget utilization</span>
@@ -569,7 +551,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           </div>
         </div>
 
-        {/* Agent Log */}
         <div ref={logRef} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '16px 20px', marginBottom: 14, minHeight: 280, maxHeight: 420, overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Agent Log</span>
@@ -653,12 +634,10 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           </div>
         </div>
 
-        {/* Receipt */}
         {done && outcomes.length > 0 && (
           <ReceiptCard outcomes={outcomes} scenario={scenario} model={modelInfo.label} walrusBlobId={walrusBlobId} walrusLoading={walrusLoading} />
         )}
 
-        {/* Buttons */}
         {!done && (
           <div>
             {!running && (
