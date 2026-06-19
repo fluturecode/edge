@@ -546,7 +546,7 @@ export default function Activity() {
         )}
 
         <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, marginTop: 12, fontFamily: 'DM Mono, monospace' }}>
-          zero wallet interruptions · gas sponsored · audit logs on Walrus
+          zero wallet interruptions · policy enforced on-chain · audit logs on Walrus
         </p>
       </div>
     </main>
