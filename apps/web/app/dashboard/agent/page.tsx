@@ -230,7 +230,7 @@ function EscalationModal({ step, onApprove, onReject }: {
           <span style={{ fontSize: 20 }}>⚡</span>
           <div>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#FFB830', letterSpacing: '0.1em', marginBottom: 2 }}>ESCALATION — HUMAN APPROVAL REQUIRED</div>
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#5A7090' }}>Agent paused. Your decision is required.</div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#5A7090' }}>Your agent knows its limits. It's asking for permission.</div>
           </div>
         </div>
 
@@ -241,7 +241,7 @@ function EscalationModal({ step, onApprove, onReject }: {
           </div>
           <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#B8C8E0' }}>{step.reasoning}</div>
           <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#5A7090', marginTop: 8 }}>
-            Amount exceeds escalation threshold — requires your approval to execute on-chain
+            Your agent hit its limit and is asking for permission. Approve to execute on Sui mainnet.
           </div>
         </div>
 
@@ -299,12 +299,16 @@ export default function AgentPage() {
 
   const addMessage = (msg: AgentMessage) => setMessages(prev => [...prev, msg]);
 
-  const systemPrompt = `EdgePass agent. Budget $${BUDGET}. Auto-approve <$${AUTO_THRESHOLD}. Escalate >$${ESCALATE_THRESHOLD}. Approved: ${config.merchants.slice(0, -1).join(', ')}. BLOCKED: ${config.merchants[config.merchants.length - 1]}.
+  const systemPrompt = `You are an AI agent at ${scenario === 'festival' ? 'a music festival' : 'a DeFi trading desk'} making autonomous spending decisions.
 
-Output 6 JSON objects, one per line, no array, no markdown:
-{"thinking":"one sentence","merchant":"name","amount":0.00,"reasoning":"one sentence"}
+Budget: $${BUDGET} · Auto-approve under $${AUTO_THRESHOLD} · Escalate above $${ESCALATE_THRESHOLD}
+Approved: ${config.merchants.slice(0, -1).join(', ')}
+NOT approved: ${config.merchants[config.merchants.length - 1]}
 
-Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merchants[config.merchants.length - 1]} (amount:0.01). One approved at exactly $${Number(ESCALATE_THRESHOLD) + 70} (triggers escalation). Total: exactly 6.`;
+Output exactly 6 JSON objects, one per line, no array, no markdown:
+{"thinking":"one sentence written as a person deciding, not a system evaluating","merchant":"exact name","amount":0.00,"reasoning":"one sentence"}
+
+Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merchants[config.merchants.length - 1]} with amount 0.01. One at exactly $$${Number(ESCALATE_THRESHOLD) + 70} to trigger escalation. Total: 6.`;
 
   const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
     const response = await fetch('/api/agent', {
@@ -436,14 +440,14 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
 
       if (!localValidation.allowed) {
         setBlockedCount(prev => prev + 1);
-        addMessage({ type: 'outcome', text: localValidation.reason || 'Blocked by EdgePass policy', merchant: step.merchant, amount: step.amount, status: 'blocked' });
+        addMessage({ type: 'outcome', text: `${step.merchant} is not on the approved merchant list`, merchant: step.merchant, amount: step.amount, status: 'blocked' });
         outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'blocked', timestamp: Date.now(), owner });
         outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'blocked' });
         return;
       }
 
       if (localValidation.requiresEscalation) {
-        addMessage({ type: 'outcome', text: 'Amount exceeds escalation threshold — awaiting your approval', merchant: step.merchant, amount: step.amount, status: 'escalated' });
+        addMessage({ type: 'outcome', text: `$${step.amount.toFixed(2)} exceeds the $${ESCALATE_THRESHOLD} threshold — pausing for your approval`, merchant: step.merchant, amount: step.amount, status: 'escalated' });
         outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'escalated', timestamp: Date.now(), owner });
         outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'escalated' });
 
@@ -453,10 +457,10 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
         setEscalationPending(null);
 
         if (humanApproved) {
-          addMessage({ type: 'system', text: `Approved — executing ${step.merchant} on-chain...` });
+          addMessage({ type: 'system', text: `You approved it — submitting to chain...` });
           await executeOnChain(step);
         } else {
-          addMessage({ type: 'system', text: `Rejected — skipping ${step.merchant}` });
+          addMessage({ type: 'system', text: `You declined — skipping ${step.merchant}` });
         }
         return;
       }
@@ -485,7 +489,7 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       await processDecision(decision);
     }
 
-    addMessage({ type: 'done', text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions` });
+    addMessage({ type: 'done', text: `${approvedCount} transactions · $${currentSpent.toFixed(2)} spent · 0 interruptions · your agent handled it` });
     setOutcomes([...outcomeItemsRef.current]);
     setDone(true); setRunning(false);
 
