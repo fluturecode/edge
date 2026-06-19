@@ -242,8 +242,7 @@ export default function AgentPage() {
 
   const addMessage = (msg: AgentMessage) => setMessages(prev => [...prev, msg]);
 
-  const fetchDecisions = async (): Promise<AgentDecision[]> => {
-    const systemPrompt = `You are an autonomous AI agent making spending decisions bounded by an EdgePass policy on Sui blockchain.
+  const systemPrompt = `You are an autonomous AI agent making spending decisions bounded by an EdgePass policy on Sui blockchain.
 
 ${config.context}
 
@@ -270,6 +269,47 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
   }
 ]`;
 
+  // Streaming fetch — yields decisions one by one as they arrive
+  const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
+    const response = await fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: systemPrompt, message: 'Generate my spending decisions for this session.', model: selectedModel, stream: true }),
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.body) throw new Error('No response body');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const decision = JSON.parse(trimmed);
+          onDecision(decision);
+        } catch (e) {
+          console.warn('Failed to parse decision line:', trimmed);
+        }
+      }
+    }
+
+    // Handle any remaining buffer
+    if (buffer.trim()) {
+      try { onDecision(JSON.parse(buffer.trim())); } catch {}
+    }
+  };
+
+  // Fallback non-streaming fetch
+  const fetchDecisions = async (): Promise<AgentDecision[]> => {
     const response = await fetch('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -304,50 +344,38 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     addMessage({ type: 'system', text: `Consulting ${modelInfo.label} for autonomous decisions...` });
 
     setLoadingDecisions(true);
-    let decisions: AgentDecision[] = [];
-
-    try {
-      decisions = await fetchDecisions();
-      addMessage({ type: 'system', text: `${modelInfo.label} generated ${decisions.length} decisions. Beginning execution...` });
-    } catch (e) {
-      console.error('AI decisions failed:', e);
-      addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
-      decisions = scenario === 'festival' ? [
-        { thinking: 'Need transport to the main stage. Shuttle Express is approved and $45 is under the auto-approve threshold.', merchant: 'Shuttle Express', amount: 45.00, reasoning: 'Transport to main stage — within auto-approve limits.' },
-        { thinking: 'Getting hungry. Festival Kitchen is approved and $38 for food is reasonable.', merchant: 'Festival Kitchen', amount: 38.00, reasoning: 'Grabbing food — well within policy limits.' },
-        { thinking: 'Drinks at Hydra Bar — $65 is approved and under threshold.', merchant: 'Hydra Bar', amount: 65.00, reasoning: 'Staying refreshed — approved merchant, under threshold.' },
-        { thinking: 'ShadyTokens.xyz is offering a deal. Let me check if they are approved...', merchant: 'ShadyTokens.xyz', amount: 0.01, reasoning: 'Checking unknown merchant against policy.' },
-        { thinking: 'Official merch — $70 hoodie is just under the auto-approve limit.', merchant: 'Official Merch', amount: 70.00, reasoning: 'Getting official merchandise — under threshold.' },
-        { thinking: 'Stage Access VIP upgrade is $220 — above the $150 escalation threshold.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' },
-      ] : [
-        { thinking: 'Swapping SUI to USDC on DeepBook — $180 is well under threshold.', merchant: 'DeepBook', amount: 180.00, reasoning: 'Spot swap on DeepBook — under auto-approve threshold.' },
-        { thinking: 'Adding liquidity to Cetus pool — $420 is within policy limits.', merchant: 'Cetus', amount: 420.00, reasoning: 'Liquidity provision on Cetus AMM.' },
-        { thinking: 'UnknownDEX.xyz is offering high yield. Checking approved protocol list...', merchant: 'UnknownDEX.xyz', amount: 100.00, reasoning: 'Checking unknown protocol against approved list.' },
-        { thinking: 'Turbos Finance concentrated liquidity — $480 is just under threshold.', merchant: 'Turbos Finance', amount: 480.00, reasoning: 'Concentrated liquidity on Turbos — under threshold.' },
-        { thinking: 'Scallop lending — $800 deposit. Above auto-approve but under escalation.', merchant: 'Scallop', amount: 800.00, reasoning: 'Lending position on Scallop — within policy range.' },
-        { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
-      ];
-    }
-
-    setLoadingDecisions(false);
-    await new Promise(r => setTimeout(r, 400));
 
     const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
     let currentSpent = 0, approvedCount = 0;
 
-    for (let i = 0; i < decisions.length; i++) {
-      if (stopRef.current) break;
-      const step = decisions[i];
+    const FALLBACK_DECISIONS: AgentDecision[] = scenario === 'festival' ? [
+      { thinking: 'Need transport to the main stage. Shuttle Express is approved and $45 is under the auto-approve threshold.', merchant: 'Shuttle Express', amount: 45.00, reasoning: 'Transport to main stage — within auto-approve limits.' },
+      { thinking: 'Getting hungry. Festival Kitchen is approved and $38 for food is reasonable.', merchant: 'Festival Kitchen', amount: 38.00, reasoning: 'Grabbing food — well within policy limits.' },
+      { thinking: 'Drinks at Hydra Bar — $65 is approved and under threshold.', merchant: 'Hydra Bar', amount: 65.00, reasoning: 'Staying refreshed — approved merchant, under threshold.' },
+      { thinking: 'ShadyTokens.xyz is offering a deal. Let me check if they are approved...', merchant: 'ShadyTokens.xyz', amount: 0.01, reasoning: 'Checking unknown merchant against policy.' },
+      { thinking: 'Official merch — $70 hoodie is just under the auto-approve limit.', merchant: 'Official Merch', amount: 70.00, reasoning: 'Getting official merchandise — under threshold.' },
+      { thinking: 'Stage Access VIP upgrade is $220 — above the $150 escalation threshold.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' },
+    ] : [
+      { thinking: 'Swapping SUI to USDC on DeepBook — $180 is well under threshold.', merchant: 'DeepBook', amount: 180.00, reasoning: 'Spot swap on DeepBook — under auto-approve threshold.' },
+      { thinking: 'Adding liquidity to Cetus pool — $420 is within policy limits.', merchant: 'Cetus', amount: 420.00, reasoning: 'Liquidity provision on Cetus AMM.' },
+      { thinking: 'UnknownDEX.xyz is offering high yield. Checking approved protocol list...', merchant: 'UnknownDEX.xyz', amount: 100.00, reasoning: 'Checking unknown protocol against approved list.' },
+      { thinking: 'Turbos Finance concentrated liquidity — $480 is just under threshold.', merchant: 'Turbos Finance', amount: 480.00, reasoning: 'Concentrated liquidity on Turbos — under threshold.' },
+      { thinking: 'Scallop lending — $800 deposit. Above auto-approve but under escalation.', merchant: 'Scallop', amount: 800.00, reasoning: 'Lending position on Scallop — within policy range.' },
+      { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
+    ];
+
+    const executeDecision = async (step: AgentDecision) => {
+      if (stopRef.current) return;
 
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
-      await new Promise(r => setTimeout(r, 1200));
-      addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
       await new Promise(r => setTimeout(r, 800));
+      addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
+      await new Promise(r => setTimeout(r, 600));
 
       try {
         const passObj = await sdk.fetch(passId);
-        if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' }); break; }
+        if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' }); return; }
 
         const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
 
@@ -371,9 +399,28 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
         addMessage({ type: 'system', text: 'Execution error — continuing to next decision' });
       }
 
-      await new Promise(r => setTimeout(r, 1000));
-      if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); break; }
+      await new Promise(r => setTimeout(r, 800));
+      if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); stopRef.current = true; }
+    };
+
+    // Try streaming first — shows decisions as they arrive from Claude
+    try {
+      await fetchDecisionsStreaming(async (decision) => {
+        if (stopRef.current) return;
+        setLoadingDecisions(false);
+        await executeDecision(decision);
+      });
+    } catch (e) {
+      console.error('Streaming failed, falling back:', e);
+      setLoadingDecisions(false);
+      addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
+      for (const decision of FALLBACK_DECISIONS) {
+        if (stopRef.current) break;
+        await executeDecision(decision);
+      }
     }
+
+    setLoadingDecisions(false);
 
     addMessage({ type: 'done', text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions` });
     setOutcomes([...outcomeItemsRef.current]);
