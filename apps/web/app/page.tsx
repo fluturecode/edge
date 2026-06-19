@@ -15,7 +15,7 @@ const LINES = [
   { text: '$ edge init --network mainnet', color: T.grey2 },
   { text: '✓ zkLogin provider loaded', color: T.teal },
   { text: '✓ Sui RPC connected · 94ms latency', color: T.teal },
-  { text: '✓ Enoki sponsorship active · gas covered', color: T.teal },
+  { text: '✓ Enoki zkLogin active · mainnet ready', color: T.teal },
   { text: '✓ Move VM ready · EdgePass contract loaded', color: T.teal },
   { text: '→ Trust infrastructure online', color: T.blue },
 ];
