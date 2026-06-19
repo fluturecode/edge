@@ -222,6 +222,7 @@ export default function AgentPage() {
   const [loadingDecisions, setLoadingDecisions] = useState(false);
   const [walrusBlobId, setWalrusBlobId] = useState<string | null>(null);
   const [walrusLoading, setWalrusLoading] = useState(false);
+  const [blockedCount, setBlockedCount] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef(false);
   const outcomesRef = useRef<AuditLogEntry[]>([]);
@@ -315,7 +316,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
   const runAgent = async () => {
     setRunning(true); setDone(false); setMessages([]); setOutcomes([]);
     setSpent(0); setTxCount(0); setWalrusBlobId(null); setWalrusLoading(false);
-    stopRef.current = false; outcomesRef.current = []; outcomeItemsRef.current = [];
+    stopRef.current = false; outcomesRef.current = []; outcomeItemsRef.current = []; setBlockedCount(0);
 
     const passId = localStorage.getItem('edge_pass_id');
     const owner = getUserAddress();
@@ -376,6 +377,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
         } else if (outcome.status === 'blocked') {
+          setBlockedCount(prev => prev + 1);
           addMessage({ type: 'outcome', text: outcome.reason || 'Blocked by EdgePass policy', merchant: step.merchant, amount: step.amount, status: 'blocked' });
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'blocked', timestamp: Date.now(), owner });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'blocked' });
@@ -432,7 +434,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
   const reset = () => {
     setMessages([]); setOutcomes([]); setDone(false); setSpent(0); setTxCount(0);
     setWalrusBlobId(null); setWalrusLoading(false);
-    stopRef.current = false; outcomesRef.current = []; outcomeItemsRef.current = [];
+    stopRef.current = false; outcomesRef.current = []; outcomeItemsRef.current = []; setBlockedCount(0);
   };
 
   const pct = Math.min((spent / BUDGET) * 100, 100);
@@ -532,7 +534,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             { l: 'Budget', v: '$' + BUDGET.toLocaleString(), c: T.grey1 },
             { l: 'Spent', v: '$' + spent.toFixed(2), c: spent > 0 ? T.teal : T.grey2 },
             { l: 'Txs executed', v: String(txCount), c: txCount > 0 ? T.teal : T.grey2 },
-            { l: 'Wallet popups', v: '0', c: T.grey2 },
+            { l: 'Policy blocked', v: String(blockedCount), c: blockedCount > 0 ? T.red : T.grey2 },
           ].map(s => (
             <div key={s.l} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 10, color: T.grey2, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>{s.l}</div>
