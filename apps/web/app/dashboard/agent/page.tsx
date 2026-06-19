@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EdgePass } from '@edge-protocol/sdk';
 import { buildSigner, getUserAddress } from '@/lib/signer';
+import { writeAuditLogs, walrusExplorerUrl, AuditLogEntry } from '@/lib/walrus';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -67,8 +68,11 @@ export default function AgentPage() {
   const [spent, setSpent] = useState(0);
   const [txCount, setTxCount] = useState(0);
   const [loadingDecisions, setLoadingDecisions] = useState(false);
+  const [walrusBlobId, setWalrusBlobId] = useState<string | null>(null);
+  const [walrusLoading, setWalrusLoading] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef(false);
+  const outcomesRef = useRef<AuditLogEntry[]>([]);
 
   const config = SCENARIOS[scenario];
   const BUDGET = config.budget;
@@ -124,8 +128,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
     const data = await response.json();
     const text = data.content?.[0]?.text || '';
-
-    // Clean and parse JSON
     const clean = text.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   };
@@ -136,7 +138,10 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     setMessages([]);
     setSpent(0);
     setTxCount(0);
+    setWalrusBlobId(null);
+    setWalrusLoading(false);
     stopRef.current = false;
+    outcomesRef.current = [];
 
     const passId = localStorage.getItem('edge_pass_id');
     const owner = getUserAddress();
@@ -164,7 +169,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     } catch (e) {
       console.error('Claude decisions failed:', e);
       addMessage({ type: 'system', text: 'Claude API unavailable — using fallback decisions.' });
-      // Fallback to ensure demo never breaks
       decisions = scenario === 'festival' ? [
         { thinking: 'Need transport to the main stage. Shuttle Express is approved and $45 is under the auto-approve threshold.', merchant: 'Shuttle Express', amount: 45.00, reasoning: 'Transport to main stage — within auto-approve limits.' },
         { thinking: 'Getting hungry. Festival Kitchen is approved and $38 for food is reasonable.', merchant: 'Festival Kitchen', amount: 38.00, reasoning: 'Grabbing food — well within policy limits.' },
@@ -232,6 +236,15 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             status: 'approved',
             digest: outcome.digest,
           });
+          outcomesRef.current.push({
+            passId,
+            merchant: step.merchant,
+            amount: step.amount,
+            status: 'approved',
+            timestamp: Date.now(),
+            owner,
+            digest: outcome.digest,
+          });
         } else if (outcome.status === 'blocked') {
           addMessage({
             type: 'outcome',
@@ -240,6 +253,14 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             amount: step.amount,
             status: 'blocked',
           });
+          outcomesRef.current.push({
+            passId,
+            merchant: step.merchant,
+            amount: step.amount,
+            status: 'blocked',
+            timestamp: Date.now(),
+            owner,
+          });
         } else if (outcome.status === 'escalated') {
           addMessage({
             type: 'outcome',
@@ -247,6 +268,14 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             merchant: step.merchant,
             amount: step.amount,
             status: 'escalated',
+          });
+          outcomesRef.current.push({
+            passId,
+            merchant: step.merchant,
+            amount: step.amount,
+            status: 'escalated',
+            timestamp: Date.now(),
+            owner,
           });
         }
       } catch (e) {
@@ -268,6 +297,14 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     });
     setDone(true);
     setRunning(false);
+
+    // Write audit log to Walrus
+    if (outcomesRef.current.length > 0) {
+      setWalrusLoading(true);
+      const blobId = await writeAuditLogs(outcomesRef.current, passId);
+      setWalrusBlobId(blobId);
+      setWalrusLoading(false);
+    }
   };
 
   const stop = () => {
@@ -281,7 +318,10 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     setDone(false);
     setSpent(0);
     setTxCount(0);
+    setWalrusBlobId(null);
+    setWalrusLoading(false);
     stopRef.current = false;
+    outcomesRef.current = [];
   };
 
   const pct = Math.min((spent / BUDGET) * 100, 100);
@@ -300,7 +340,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
         <div style={{ marginBottom: 24 }}>
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 12, padding: 0, display: 'block' }}>back</button>
 
-          {/* Scenario switcher */}
           {!running && !done && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               {(Object.keys(SCENARIOS) as Array<'festival' | 'defi'>).map(s => (
@@ -440,6 +479,30 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             )}
           </div>
         </div>
+
+        {/* Walrus Audit Log — appears after completion */}
+        {done && (
+          <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: '1px solid ' + T.border, marginBottom: 14, animation: 'fadeUp 0.4s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Walrus Audit Log</span>
+              {walrusLoading && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
+            </div>
+            {walrusLoading && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>$ writing audit log to Walrus...</div>}
+            {walrusBlobId && (
+              <div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
+                <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
+                  view on Walrus explorer
+                </a>
+              </div>
+            )}
+            {!walrusLoading && !walrusBlobId && (
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>audit log pending...</div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: done ? '1fr 1fr' : '1fr', gap: 10 }}>
           {!running && !done && (
