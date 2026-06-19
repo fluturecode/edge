@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLISHERS = [
-  "https://walrus-mainnet-publisher.nami.cloud/GfYcdOZbB7wLdVPdbUAd",
+  "https://walrus-mainnet-publisher.nami.cloud/GfYcdOZbB7wLdVPdbUAd2stXRqt5bKMe3r78qcRq5jYelwky0tTvr28r1XGqF2HD4vte9NgZnPG06L",
   "https://walrus-mainnet-publisher-1.staketab.org:443",
 ];
 
