@@ -243,36 +243,12 @@ export default function AgentPage() {
 
   const addMessage = (msg: AgentMessage) => setMessages(prev => [...prev, msg]);
 
-  const systemPrompt = `You are an autonomous AI agent making spending decisions bounded by an EdgePass policy on Sui blockchain.
+  const systemPrompt = `EdgePass agent. Budget $${BUDGET}. Auto-approve <$${AUTO_THRESHOLD}. Escalate >$${ESCALATE_THRESHOLD}. Approved: ${config.merchants.slice(0, -1).join(', ')}. BLOCKED: ${config.merchants[config.merchants.length - 1]}.
 
-${config.context}
+Output 6 JSON objects, one per line, no array, no markdown:
+{"thinking":"one sentence","merchant":"name","amount":0.00,"reasoning":"one sentence"}
 
-Your EdgePass policy:
-- Total budget: $${BUDGET}
-- Auto-approve threshold: $${AUTO_THRESHOLD} (transactions below this execute automatically)
-- Escalation threshold: $${ESCALATE_THRESHOLD} (transactions above this require human approval)
-- Approved merchants: ${config.merchants.slice(0, -1).join(', ')}
-- The last merchant in your list is NOT approved — include it to demonstrate policy enforcement
-
-Generate exactly 6 spending decisions that demonstrate:
-1. Several auto-approved transactions (under $${AUTO_THRESHOLD}) — use realistic amounts like $18, $22, $45, $65
-2. One attempt at the UNAPPROVED merchant (will be blocked by policy) — use $0.01 amount
-3. One transaction of EXACTLY $$${Number(ESCALATE_THRESHOLD) + 70} at an approved merchant (MUST exceed $${ESCALATE_THRESHOLD} to trigger escalation)
-4. One additional auto-approved transaction under $${AUTO_THRESHOLD}
-
-CRITICAL RULES:
-- The escalation transaction amount MUST be $${Number(ESCALATE_THRESHOLD) + 70} or higher — never go under $${ESCALATE_THRESHOLD}
-- The blocked merchant must be the unapproved one
-- All other transactions must be under $${AUTO_THRESHOLD}
-- Total decisions: exactly 6
-
-Output exactly 6 decisions as newline-delimited JSON objects. No array. No markdown. No explanation. One complete JSON object per line, output each immediately:
-{"thinking":"Brief one-sentence reasoning","merchant":"Exact merchant name","amount":42.50,"reasoning":"One sentence"}
-{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
-{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
-{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
-{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
-{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}`;
+Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merchants[config.merchants.length - 1]} (amount:0.01). One approved at exactly $${Number(ESCALATE_THRESHOLD) + 70} (triggers escalation). Total: exactly 6.`;
 
   const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
     const response = await fetch('/api/agent', {
