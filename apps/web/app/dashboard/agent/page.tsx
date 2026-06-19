@@ -266,8 +266,8 @@ CRITICAL RULES:
 - All other transactions must be under $${AUTO_THRESHOLD}
 - Total decisions: exactly 6
 
-Output exactly 6 decisions as newline-delimited JSON objects. No array. No markdown. No explanation. One complete JSON object per line, output each one immediately as you decide it:
-{"thinking":"2-3 sentence reasoning","merchant":"Exact merchant name","amount":42.50,"reasoning":"One sentence"}
+Output exactly 6 decisions as newline-delimited JSON objects. No array. No markdown. No explanation. One complete JSON object per line, output each immediately:
+{"thinking":"Brief one-sentence reasoning","merchant":"Exact merchant name","amount":42.50,"reasoning":"One sentence"}
 {"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
 {"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
 {"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
