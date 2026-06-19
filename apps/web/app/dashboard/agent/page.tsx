@@ -381,13 +381,8 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       setRunning(false); return;
     }
 
-    addMessage({ type: 'system', text: 'Edge Agent v1.0 initializing...' });
-    await new Promise(r => setTimeout(r, 400));
-    addMessage({ type: 'system', text: 'Loading EdgePass policy from Sui mainnet...' });
-    await new Promise(r => setTimeout(r, 600));
-    addMessage({ type: 'system', text: `Policy loaded. Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
-    await new Promise(r => setTimeout(r, 400));
-    addMessage({ type: 'system', text: `Consulting ${modelInfo.label} for autonomous decisions...` });
+    addMessage({ type: 'system', text: `Edge Agent v1.0 · Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
+    addMessage({ type: 'system', text: `Consulting ${modelInfo.label}...` });
 
     setLoadingDecisions(true);
 
@@ -712,9 +707,7 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
               </div>
             </div>
           )}
-          {messages.length === 0 && loadingDecisions && (
-            <ThinkingShimmer modelColor={modelColor} />
-          )}
+          {loadingDecisions && <ThinkingShimmer modelColor={modelColor} />}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((msg, i) => (
