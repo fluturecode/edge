@@ -649,11 +649,11 @@ The EdgePass is a first-class owned object in the user's wallet. An agent execut
 ## Move Contract
 
 ```
-Package:  0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
-Network:  Sui Testnet (Mainnet coming)
+Package:  0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
+Network:  Sui Mainnet ✅
 ```
 
-[View on Sui Explorer →](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d)
+[View on Sui Explorer →](https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde)
 
 ### Contract functions
 
@@ -671,6 +671,20 @@ public entry fun execute_transaction(
 
 public entry fun revoke_pass(pass: &mut EdgePass, ctx: &mut TxContext)
 ```
+
+### On-chain enforcement
+
+`execute_transaction` validates every spend at the protocol level before recording it. Five assertions run inside the Move VM — if any fails, the entire transaction reverts:
+
+```move
+assert!(pass.active, EPassInactive);
+assert!(now <= pass.expires_at, EPassExpired);
+assert!(is_merchant_approved(pass, &merchant), EMerchantNotApproved);
+assert!(pass.spent + amount <= pass.budget, EBudgetExceeded);
+assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
+```
+
+This means policy enforcement is not client-side. A compromised agent cannot bypass the contract. The chain is the trust boundary.
 
 ---
 
@@ -800,7 +814,7 @@ cd packages/sdk && pnpm test
 - **npm:** [npmjs.com/package/@edge-protocol/sdk](https://npmjs.com/package/@edge-protocol/sdk)
 - **GitHub:** [github.com/fluturecode/edge](https://github.com/fluturecode/edge)
 - **Live Demo:** [edge-web-cyan.vercel.app](https://edge-web-cyan.vercel.app)
-- **Sui Explorer:** [Contract on Testnet](https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d)
+- **Contract on Mainnet:** [suiscan.xyz/mainnet/object/0x2ad62ac...](https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde)
 
 ---
 
