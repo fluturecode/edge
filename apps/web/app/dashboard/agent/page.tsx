@@ -412,10 +412,24 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 16, padding: 0, display: 'block' }}>← back</button>
 
           <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
-          <p style={{ color: T.grey2, fontSize: 13, margin: '0 0 20px', fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
+          <p style={{ color: T.grey2, fontSize: 13, margin: '0 0 8px', fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
             {scenario === 'festival'
               ? `${modelInfo.label} autonomously decides what to spend at the festival. Every decision executes against your EdgePass policy on-chain.`
               : `${modelInfo.label} autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain.`}
+          </p>
+
+          {/* Dynamic tagline */}
+          <p style={{
+            fontSize: 11, fontFamily: 'DM Mono, monospace', margin: '0 0 20px', letterSpacing: '0.04em', transition: 'color 0.3s',
+            color: loadingDecisions ? T.gold : running ? T.teal : done ? T.teal : T.grey2,
+          }}>
+            {loadingDecisions
+              ? `→ consulting ${modelInfo.label.toLowerCase()}...`
+              : running
+              ? '→ executing decisions against your EdgePass on Sui mainnet'
+              : done
+              ? '✓ agent completed — receipt below'
+              : 'The AI decides. EdgePass enforces. The chain is the guarantee.'}
           </p>
 
           {/* Switchers — only before run */}
