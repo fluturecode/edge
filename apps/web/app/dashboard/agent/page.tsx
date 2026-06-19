@@ -266,15 +266,13 @@ CRITICAL RULES:
 - All other transactions must be under $${AUTO_THRESHOLD}
 - Total decisions: exactly 6
 
-Respond ONLY with a valid JSON array, no markdown, no explanation:
-[
-  {
-    "thinking": "Your internal reasoning (2-3 sentences, realistic and specific)",
-    "merchant": "Exact merchant name",
-    "amount": 42.50,
-    "reasoning": "One sentence explanation"
-  }
-]`;
+Output exactly 6 decisions as newline-delimited JSON objects. No array. No markdown. No explanation. One complete JSON object per line, output each one immediately as you decide it:
+{"thinking":"2-3 sentence reasoning","merchant":"Exact merchant name","amount":42.50,"reasoning":"One sentence"}
+{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
+{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
+{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
+{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}
+{"thinking":"...","merchant":"...","amount":0.00,"reasoning":"..."}`;
 
   const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
     const response = await fetch('/api/agent', {
@@ -398,11 +396,9 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     const processDecision = async (step: AgentDecision) => {
       if (stopRef.current) return;
 
-      // Show thinking + decision immediately
+      // Show thinking + decision immediately — no delays so next decision can stream in
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
-      await new Promise(r => setTimeout(r, 600));
       addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
-      await new Promise(r => setTimeout(r, 400));
 
       // Pre-validate locally — instant, no network
       const localValidation = sdk.validate(
