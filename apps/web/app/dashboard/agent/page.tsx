@@ -372,18 +372,13 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
 
-    // Fetch pass once — update spent locally after each approved tx (no re-fetch needed)
+    // Fetch pass ONCE before execution loop — thread updated pass through each transaction
     let currentPassObj = await sdk.fetch(passId);
     if (!currentPassObj) {
       addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' });
       setRunning(false); setDone(true); return;
     }
     addMessage({ type: 'system', text: 'EdgePass loaded from chain. Beginning execution...' });
-
-    // Use SDK event system to keep local pass state in sync
-    sdk.on('approved', ({ pass }) => {
-      currentPassObj = pass;
-    });
 
     const executeDecision = async (step: AgentDecision): Promise<void> => {
       if (stopRef.current) return;
@@ -395,6 +390,9 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
       try {
         const outcome = await sdk.execute(currentPassObj!, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
+
+        // Thread the updated pass object to avoid version conflicts
+        if (outcome.pass) currentPassObj = outcome.pass;
 
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
@@ -410,9 +408,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           addMessage({ type: 'outcome', text: 'Amount exceeds escalation threshold — requires human approval', merchant: step.merchant, amount: step.amount, status: 'escalated' });
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'escalated', timestamp: Date.now(), owner });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'escalated' });
-        } else if (outcome.status === 'error') {
-          console.error('Transaction error:', outcome.reason);
-          addMessage({ type: 'system', text: 'Transaction error — continuing to next decision' });
         }
       } catch (e) {
         console.error('On-chain execute failed:', e);
