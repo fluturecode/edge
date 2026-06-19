@@ -60,6 +60,12 @@ const AGENT_SCRIPT = [
     amount: 85.00,
     reasoning: 'Attempting VIP stage access upgrade — $85 is above auto-approve but within policy limits.',
   },
+  {
+    thinking: 'ShadyTokens.xyz is offering a deal for $0.01. Checking against approved merchant list...',
+    merchant: 'ShadyTokens.xyz',
+    amount: 0.01,
+    reasoning: 'Attempting micro-transaction — checking policy.',
+  },
 ];
 
 export default function AgentPage() {
