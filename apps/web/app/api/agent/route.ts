@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 const GEMINI_MODELS = [
@@ -8,7 +10,6 @@ const GEMINI_MODELS = [
 
 async function callGemini(model: string, system: string, message: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GOOGLE_API_KEY}`;
-
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -18,29 +19,22 @@ async function callGemini(model: string, system: string, message: string) {
       generationConfig: { maxOutputTokens: 1000, temperature: 0.7 },
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    console.error('Gemini error:', err);
-    throw new Error(err);
-  }
-
+  if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   return { content: [{ type: 'text', text }], model, provider: 'google' };
 }
 
 /**
- * Extract complete JSON objects from a streaming text buffer using brace counting.
- * Returns { objects: parsed[], remaining: string } where remaining is the unparsed tail.
- * This correctly handles nested braces, strings with braces, and partial objects.
+ * Extract complete JSON objects from streaming text using brace counting.
+ * Correctly handles strings containing braces, escape sequences, and partial objects.
+ * Returns complete objects found so far and the remaining unparsed tail.
  */
 function extractCompleteObjects(text: string): { objects: any[]; remaining: string } {
   const objects: any[] = [];
   let i = 0;
 
   while (i < text.length) {
-    // Find the start of a JSON object
     const start = text.indexOf('{', i);
     if (start === -1) break;
 
@@ -51,7 +45,6 @@ function extractCompleteObjects(text: string): { objects: any[]; remaining: stri
 
     while (j < text.length) {
       const ch = text[j];
-
       if (escape) {
         escape = false;
       } else if (ch === '\\' && inString) {
@@ -63,7 +56,6 @@ function extractCompleteObjects(text: string): { objects: any[]; remaining: stri
         else if (ch === '}') {
           depth--;
           if (depth === 0) {
-            // Found a complete object
             try {
               const obj = JSON.parse(text.slice(start, j + 1));
               if (obj.thinking && obj.merchant && obj.amount !== undefined && obj.reasoning) {
@@ -78,9 +70,7 @@ function extractCompleteObjects(text: string): { objects: any[]; remaining: stri
       j++;
     }
 
-    // If we didn't find a closing brace, the object is incomplete — stop here
     if (depth > 0) break;
-    if (j === text.length && depth > 0) break;
   }
 
   return { objects, remaining: text.slice(i) };
@@ -89,7 +79,6 @@ function extractCompleteObjects(text: string): { objects: any[]; remaining: stri
 export async function POST(req: NextRequest) {
   try {
     const { system, message, model = 'claude-sonnet-4-6', stream = false } = await req.json();
-    console.log('Agent route called:', { model, stream });
 
     // Gemini — collect full response then stream decisions one by one
     if (GEMINI_MODELS.includes(model)) {
@@ -114,7 +103,11 @@ export async function POST(req: NextRequest) {
         },
       });
       return new Response(readable, {
-        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Accel-Buffering': 'no' },
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Accel-Buffering': 'no',
+          'Cache-Control': 'no-cache, no-transform',
+        },
       });
     }
 
@@ -138,10 +131,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(await response.json());
     }
 
-    // TRUE streaming Anthropic path
-    // Calls Claude with stream:true, parses SSE events, extracts complete JSON
-    // objects using brace-counting as they accumulate — emits each decision
-    // the moment it's complete rather than waiting for all 6.
+    // Streaming Anthropic path — edge runtime ensures no buffering
+    // Brace-counting parser emits each decision the moment Claude completes it
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -158,19 +149,15 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    if (!claudeResponse.ok) {
-      const err = await claudeResponse.text();
-      console.error('Anthropic streaming error:', err);
-      throw new Error(err);
-    }
+    if (!claudeResponse.ok) throw new Error(await claudeResponse.text());
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
         const reader = claudeResponse.body!.getReader();
         const decoder = new TextDecoder();
-        let sseBuffer = '';   // SSE line buffer
-        let jsonBuffer = '';  // accumulates Claude's text output
+        let sseBuffer = '';
+        let jsonBuffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -189,13 +176,9 @@ export async function POST(req: NextRequest) {
               const event = JSON.parse(data);
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
                 jsonBuffer += event.delta.text;
-
-                // Extract any complete objects from the accumulated text
                 const { objects, remaining } = extractCompleteObjects(jsonBuffer);
                 jsonBuffer = remaining;
-
                 for (const obj of objects) {
-                  console.log('Streaming decision:', obj.merchant);
                   controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
                 }
               }
@@ -203,7 +186,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Final pass on any remaining buffer
+        // Final pass
         if (jsonBuffer.trim()) {
           const { objects } = extractCompleteObjects(jsonBuffer);
           for (const obj of objects) {
@@ -219,7 +202,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Accel-Buffering': 'no',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
       },
     });
 
