@@ -209,6 +209,86 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
   );
 }
 
+
+function EscalationModal({ step, onApprove, onReject }: {
+  step: { merchant: string; amount: number; reasoning: string };
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(8,12,20,0.85)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      padding: '0 20px',
+    }}>
+      <div style={{
+        background: '#0D1420', border: '1px solid rgba(255,184,48,0.4)', borderRadius: 20,
+        padding: '28px 24px', maxWidth: 420, width: '100%',
+        boxShadow: '0 0 40px rgba(255,184,48,0.15)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <span style={{ fontSize: 20 }}>⚡</span>
+          <div>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#FFB830', letterSpacing: '0.1em', marginBottom: 2 }}>ESCALATION — HUMAN APPROVAL REQUIRED</div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#5A7090' }}>Agent paused. Your decision is required.</div>
+          </div>
+        </div>
+
+        <div style={{ background: 'rgba(255,184,48,0.06)', border: '1px solid rgba(255,184,48,0.2)', borderRadius: 12, padding: '16px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#FFFFFF', fontWeight: 600 }}>{step.merchant}</span>
+            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 18, color: '#FFB830', fontWeight: 700 }}>${step.amount.toFixed(2)}</span>
+          </div>
+          <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#B8C8E0' }}>{step.reasoning}</div>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#5A7090', marginTop: 8 }}>
+            Amount exceeds escalation threshold — requires your approval to execute on-chain
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button onClick={onReject}
+            style={{ padding: '12px', borderRadius: 10, border: '1px solid #1A2740', background: 'transparent', color: '#B8C8E0', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#FF4D6A'; e.currentTarget.style.color = '#FF4D6A'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#1A2740'; e.currentTarget.style.color = '#B8C8E0'; }}>
+            ✗ Reject
+          </button>
+          <button onClick={onApprove}
+            style={{ padding: '12px', borderRadius: 10, border: 'none', background: '#FFB830', color: '#080C14', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
+            ✓ Approve
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function ThinkingShimmer({ modelColor }: { modelColor: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {[1,2,3].map(i => (
+        <div key={i} style={{
+          borderRadius: 8, padding: '10px 12px', overflow: 'hidden', position: 'relative',
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+          opacity: 1 - (i * 0.2),
+        }}>
+          <div style={{ height: 8, width: '30%', borderRadius: 4, background: modelColor + '40', marginBottom: 8 }} />
+          <div style={{ height: 8, width: '90%', borderRadius: 4, background: 'rgba(255,255,255,0.06)', marginBottom: 6 }} />
+          <div style={{ height: 8, width: '70%', borderRadius: 4, background: 'rgba(255,255,255,0.04)' }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%)`,
+            animation: 'shimmer 1.5s ease-in-out infinite',
+            backgroundSize: '200% 100%',
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AgentPage() {
   const router = useRouter();
   const [scenario, setScenario] = useState<'festival' | 'defi'>('festival');
@@ -223,6 +303,7 @@ export default function AgentPage() {
   const [walrusBlobId, setWalrusBlobId] = useState<string | null>(null);
   const [walrusLoading, setWalrusLoading] = useState(false);
   const [blockedCount, setBlockedCount] = useState(0);
+  const [escalationPending, setEscalationPending] = useState<{step: any; resolve: (approved: boolean) => void} | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef(false);
   const outcomesRef = useRef<AuditLogEntry[]>([]);
@@ -404,8 +485,38 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       }
 
       if (localValidation.requiresEscalation) {
-        // Escalated — show instantly, no chain needed
-        addMessage({ type: 'outcome', text: 'Amount exceeds escalation threshold — requires human approval', merchant: step.merchant, amount: step.amount, status: 'escalated' });
+        // Escalated — show modal and wait for human approval
+        addMessage({ type: 'outcome', text: 'Amount exceeds escalation threshold — awaiting your approval', merchant: step.merchant, amount: step.amount, status: 'escalated' });
+        
+        const approved = await new Promise<boolean>((resolve) => {
+          setEscalationPending({ step, resolve });
+        });
+        setEscalationPending(null);
+
+        if (approved) {
+          // Human approved — execute on-chain
+          addMessage({ type: 'system', text: `Human approved ${step.merchant} — executing on-chain...` });
+          try {
+            const passObj = await sdk.fetch(passId);
+            if (passObj) {
+              const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
+              if (outcome.status === 'approved') {
+                currentSpent += step.amount; approvedCount++;
+                setSpent(currentSpent); setTxCount(approvedCount);
+                addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
+                outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
+                outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
+                return;
+              }
+            }
+          } catch (e) {
+            console.error('Escalation execute failed:', e);
+            addMessage({ type: 'system', text: 'Escalation execution failed — continuing' });
+          }
+        } else {
+          addMessage({ type: 'system', text: `Human rejected ${step.merchant} — skipping` });
+        }
+
         outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'escalated', timestamp: Date.now(), owner });
         outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'escalated' });
         return;
@@ -472,6 +583,7 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
       `}</style>
 
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
@@ -592,13 +704,16 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
             )}
           </div>
 
-          {messages.length === 0 && (
+          {messages.length === 0 && !loadingDecisions && (
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 8 }}>agent standing by_</div>
               <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
                 {scenario === 'festival' ? `${modelInfo.label} will autonomously decide what to buy at the festival` : `${modelInfo.label} will autonomously manage your DeFi positions`}
               </div>
             </div>
+          )}
+          {messages.length === 0 && loadingDecisions && (
+            <ThinkingShimmer modelColor={modelColor} />
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -704,6 +819,13 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
         </p>
 
       </div>
+      {escalationPending && (
+        <EscalationModal
+          step={escalationPending.step}
+          onApprove={() => escalationPending.resolve(true)}
+          onReject={() => escalationPending.resolve(false)}
+        />
+      )}
     </main>
   );
 }
