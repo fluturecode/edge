@@ -27,29 +27,81 @@ async function callGemini(model: string, system: string, message: string) {
 
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  return {
-    content: [{ type: 'text', text }],
-    model,
-    provider: 'google',
-  };
+  return { content: [{ type: 'text', text }], model, provider: 'google' };
+}
+
+/**
+ * Extract complete JSON objects from a streaming text buffer using brace counting.
+ * Returns { objects: parsed[], remaining: string } where remaining is the unparsed tail.
+ * This correctly handles nested braces, strings with braces, and partial objects.
+ */
+function extractCompleteObjects(text: string): { objects: any[]; remaining: string } {
+  const objects: any[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    // Find the start of a JSON object
+    const start = text.indexOf('{', i);
+    if (start === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let j = start;
+
+    while (j < text.length) {
+      const ch = text[j];
+
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\' && inString) {
+        escape = true;
+      } else if (ch === '"') {
+        inString = !inString;
+      } else if (!inString) {
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            // Found a complete object
+            try {
+              const obj = JSON.parse(text.slice(start, j + 1));
+              if (obj.thinking && obj.merchant && obj.amount !== undefined && obj.reasoning) {
+                objects.push(obj);
+              }
+            } catch {}
+            i = j + 1;
+            break;
+          }
+        }
+      }
+      j++;
+    }
+
+    // If we didn't find a closing brace, the object is incomplete — stop here
+    if (depth > 0) break;
+    if (j === text.length && depth > 0) break;
+  }
+
+  return { objects, remaining: text.slice(i) };
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { system, message, model = 'claude-sonnet-4-6', stream = false } = await req.json();
-    console.log('Agent route called:', { model, stream, hasAnthropic: !!process.env.ANTHROPIC_API_KEY, hasGoogle: !!process.env.GOOGLE_API_KEY });
+    console.log('Agent route called:', { model, stream });
 
-    // Gemini — no streaming support, use non-streaming path
+    // Gemini — collect full response then stream decisions one by one
     if (GEMINI_MODELS.includes(model)) {
       const data = await callGemini(model, system, message);
-
       if (!stream) return NextResponse.json(data);
 
-      // For Gemini streaming — parse and stream decisions from completed response
       const text = data.content?.[0]?.text || '';
       const clean = text.replace(/```json|```/g, '').trim();
       let decisions: any[] = [];
-      try { decisions = JSON.parse(clean); } catch { return NextResponse.json({ error: 'Parse failed' }, { status: 500 }); }
+      try { decisions = JSON.parse(clean); } catch {
+        return NextResponse.json({ error: 'Parse failed' }, { status: 500 });
+      }
 
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -82,17 +134,14 @@ export async function POST(req: NextRequest) {
           messages: [{ role: 'user', content: message }],
         }),
       });
-
-      if (!response.ok) {
-        const err = await response.text();
-        console.error('Anthropic error:', err);
-        throw new Error(err);
-      }
-
+      if (!response.ok) throw new Error(await response.text());
       return NextResponse.json(await response.json());
     }
 
-    // TRUE streaming Anthropic path — stream Claude's output and parse decisions in real time
+    // TRUE streaming Anthropic path
+    // Calls Claude with stream:true, parses SSE events, extracts complete JSON
+    // objects using brace-counting as they accumulate — emits each decision
+    // the moment it's complete rather than waiting for all 6.
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -116,22 +165,20 @@ export async function POST(req: NextRequest) {
     }
 
     const encoder = new TextEncoder();
-
     const readable = new ReadableStream({
       async start(controller) {
         const reader = claudeResponse.body!.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
-        let fullText = '';
+        let sseBuffer = '';   // SSE line buffer
+        let jsonBuffer = '';  // accumulates Claude's text output
 
-        // Parse Claude's SSE stream and accumulate text
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() || '';
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
@@ -141,50 +188,39 @@ export async function POST(req: NextRequest) {
             try {
               const event = JSON.parse(data);
               if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                fullText += event.delta.text;
+                jsonBuffer += event.delta.text;
 
-                // Try to parse complete JSON objects as they accumulate
-                // Look for complete decision objects: {...}
-                const objectRegex = /\{[^{}]*"thinking"[^{}]*"merchant"[^{}]*"amount"[^{}]*"reasoning"[^{}]*\}/g;
-                const matches = fullText.match(objectRegex);
-                if (matches) {
-                  for (const match of matches) {
-                    try {
-                      const decision = JSON.parse(match);
-                      if (decision.thinking && decision.merchant && decision.amount && decision.reasoning) {
-                        controller.enqueue(encoder.encode(JSON.stringify(decision) + '\n'));
-                        // Remove matched decision from fullText to avoid re-processing
-                        fullText = fullText.replace(match, '✓');
-                      }
-                    } catch {}
-                  }
+                // Extract any complete objects from the accumulated text
+                const { objects, remaining } = extractCompleteObjects(jsonBuffer);
+                jsonBuffer = remaining;
+
+                for (const obj of objects) {
+                  console.log('Streaming decision:', obj.merchant);
+                  controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
                 }
               }
             } catch {}
           }
         }
 
-        // Final pass — parse any remaining decisions from complete text
-        try {
-          const clean = fullText.replace(/✓/g, '').replace(/```json|```/g, '').trim();
-          // Extract array content
-          const arrayMatch = clean.match(/\[[\s\S]*\]/);
-          if (arrayMatch) {
-            const decisions = JSON.parse(arrayMatch[0]);
-            for (const decision of decisions) {
-              if (decision.thinking && decision.merchant) {
-                controller.enqueue(encoder.encode(JSON.stringify(decision) + '\n'));
-              }
-            }
+        // Final pass on any remaining buffer
+        if (jsonBuffer.trim()) {
+          const { objects } = extractCompleteObjects(jsonBuffer);
+          for (const obj of objects) {
+            controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
           }
-        } catch {}
+        }
 
         controller.close();
       },
     });
 
     return new Response(readable, {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Accel-Buffering': 'no' },
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Accel-Buffering': 'no',
+        'Cache-Control': 'no-cache',
+      },
     });
 
   } catch (e) {
