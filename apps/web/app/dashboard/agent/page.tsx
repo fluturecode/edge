@@ -264,31 +264,6 @@ function EscalationModal({ step, onApprove, onReject }: {
   );
 }
 
-
-function ThinkingShimmer({ modelColor }: { modelColor: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {[1,2,3].map(i => (
-        <div key={i} style={{
-          borderRadius: 8, padding: '10px 12px', overflow: 'hidden', position: 'relative',
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
-          opacity: 1 - (i * 0.2),
-        }}>
-          <div style={{ height: 8, width: '30%', borderRadius: 4, background: modelColor + '40', marginBottom: 8 }} />
-          <div style={{ height: 8, width: '90%', borderRadius: 4, background: 'rgba(255,255,255,0.06)', marginBottom: 6 }} />
-          <div style={{ height: 8, width: '70%', borderRadius: 4, background: 'rgba(255,255,255,0.04)' }} />
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%)`,
-            animation: 'shimmer 1.5s ease-in-out infinite',
-            backgroundSize: '200% 100%',
-          }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function AgentPage() {
   const router = useRouter();
   const [scenario, setScenario] = useState<'festival' | 'defi'>('festival');
@@ -406,61 +381,50 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
     ];
 
-    // ── Execution queue ──────────────────────────────────────────────────────
-    // Approved decisions are queued and executed sequentially on-chain.
-    // Blocked/escalated are validated locally and shown instantly — no chain needed.
-    // This gives immediate UI feedback as Claude streams decisions in.
+    // ── Architecture ──────────────────────────────────────────────────────────
+    // 1. Collect all decisions from Claude (streaming in background)
+    // 2. Fire each decision card rapidly — no artificial delays
+    // 3. Blocked: instant local validation, no chain
+    // 4. Escalated: modal appears, awaits human decision
+    // 5. Approved: execute on-chain sequentially
 
-    let executionQueue: AgentDecision[] = [];
-    let isExecuting = false;
-
-    const runQueue = async () => {
-      if (isExecuting) return;
-      isExecuting = true;
-      while (executionQueue.length > 0 && !stopRef.current) {
-        const step = executionQueue.shift()!;
-        try {
-          const passObj = await sdk.fetch(passId);
-          if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' }); break; }
-          const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
-          if (outcome.status === 'approved') {
-            currentSpent += step.amount; approvedCount++;
-            setSpent(currentSpent); setTxCount(approvedCount);
-            addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
-            outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
-            outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
-          } else if (outcome.status === 'error') {
-            console.error('Transaction error:', outcome.reason);
-            addMessage({ type: 'system', text: 'Transaction failed — continuing' });
-          }
-        } catch (e) {
-          console.error('On-chain execute failed:', e);
-          addMessage({ type: 'system', text: 'Execution error — continuing' });
+    const executeOnChain = async (step: AgentDecision): Promise<void> => {
+      try {
+        const passObj = await sdk.fetch(passId);
+        if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass.' }); return; }
+        const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
+        if (outcome.status === 'approved') {
+          currentSpent += step.amount; approvedCount++;
+          setSpent(currentSpent); setTxCount(approvedCount);
+          addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
+          outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
+          outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
+          await new Promise(r => setTimeout(r, 2000));
+        } else if (outcome.status === 'error') {
+          addMessage({ type: 'system', text: 'Transaction failed — continuing' });
         }
-        // 2s settle between approved transactions
-        await new Promise(r => setTimeout(r, 2000));
-        if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); stopRef.current = true; }
+      } catch (e) {
+        console.error('On-chain execute failed:', e);
+        addMessage({ type: 'system', text: 'Execution error — continuing' });
       }
-      isExecuting = false;
     };
 
-    // Process each decision as it streams in from Claude
-    const processDecision = async (step: AgentDecision) => {
+    const processDecision = async (step: AgentDecision): Promise<void> => {
       if (stopRef.current) return;
 
-      // Show thinking + decision immediately — no delays so next decision can stream in
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
       addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
 
-      // Pre-validate locally — instant, no network
       const localValidation = sdk.validate(
-        { id: passId, config: {
+        {
+          id: passId,
+          config: {
             budget: BigInt(Math.round(BUDGET * 1_000_000_000)),
             autoThreshold: BigInt(Math.round(AUTO_THRESHOLD * 1_000_000_000)),
             escalateThreshold: BigInt(Math.round(ESCALATE_THRESHOLD * 1_000_000_000)),
             approvedMerchants: config.merchants.slice(0, -1),
             expiryMs: 48 * 60 * 60 * 1000,
-            owner: owner,
+            owner,
           },
           spent: BigInt(Math.round(currentSpent * 1_000_000_000)),
           active: true,
@@ -471,7 +435,6 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       );
 
       if (!localValidation.allowed) {
-        // Blocked — show instantly, no chain needed
         setBlockedCount(prev => prev + 1);
         addMessage({ type: 'outcome', text: localValidation.reason || 'Blocked by EdgePass policy', merchant: step.merchant, amount: step.amount, status: 'blocked' });
         outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'blocked', timestamp: Date.now(), owner });
@@ -480,74 +443,46 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
       }
 
       if (localValidation.requiresEscalation) {
-        // Escalated — show modal and wait for human approval
         addMessage({ type: 'outcome', text: 'Amount exceeds escalation threshold — awaiting your approval', merchant: step.merchant, amount: step.amount, status: 'escalated' });
-        
-        const approved = await new Promise<boolean>((resolve) => {
+        outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'escalated', timestamp: Date.now(), owner });
+        outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'escalated' });
+
+        const humanApproved = await new Promise<boolean>((resolve) => {
           setEscalationPending({ step, resolve });
         });
         setEscalationPending(null);
 
-        if (approved) {
-          // Human approved — execute on-chain
-          addMessage({ type: 'system', text: `Human approved ${step.merchant} — executing on-chain...` });
-          try {
-            const passObj = await sdk.fetch(passId);
-            if (passObj) {
-              const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
-              if (outcome.status === 'approved') {
-                currentSpent += step.amount; approvedCount++;
-                setSpent(currentSpent); setTxCount(approvedCount);
-                addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
-                outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
-                outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
-                return;
-              }
-            }
-          } catch (e) {
-            console.error('Escalation execute failed:', e);
-            addMessage({ type: 'system', text: 'Escalation execution failed — continuing' });
-          }
+        if (humanApproved) {
+          addMessage({ type: 'system', text: `Approved — executing ${step.merchant} on-chain...` });
+          await executeOnChain(step);
         } else {
-          addMessage({ type: 'system', text: `Human rejected ${step.merchant} — skipping` });
+          addMessage({ type: 'system', text: `Rejected — skipping ${step.merchant}` });
         }
-
-        outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'escalated', timestamp: Date.now(), owner });
-        outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'escalated' });
         return;
       }
 
-      // Approved — queue for sequential on-chain execution
-      addMessage({ type: 'system', text: `Queuing ${step.merchant} for on-chain execution...` });
-      executionQueue.push(step);
-      runQueue(); // start queue processor if not already running
+      await executeOnChain(step);
+      if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); stopRef.current = true; }
     };
 
-    // Stream decisions from Claude — fire processDecision without awaiting
-    // so UI updates appear immediately as each decision arrives
-    // Approved decisions queue sequentially, blocked/escalated show instantly
+    // Collect all decisions from Claude, then fire rapidly one by one
+    const decisions: AgentDecision[] = [];
     try {
       await fetchDecisionsStreaming((decision) => {
-        setLoadingDecisions(false);
-        processDecision(decision); // intentionally not awaited — decisions process concurrently
+        decisions.push(decision);
       });
     } catch (e) {
       console.error('Streaming failed, falling back:', e);
-      setLoadingDecisions(false);
+      decisions.push(...FALLBACK_DECISIONS);
       addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
-      for (const decision of FALLBACK_DECISIONS) {
-        if (stopRef.current) break;
-        processDecision(decision); // intentionally not awaited
-        await new Promise(r => setTimeout(r, 800)); // small gap between fallback decisions
-      }
     }
 
     setLoadingDecisions(false);
+    addMessage({ type: 'system', text: `${modelInfo.label} ready · ${decisions.length} decisions · executing...` });
 
-    // Wait for execution queue to fully drain before showing receipt
-    await new Promise(r => setTimeout(r, 500));
-    while (isExecuting || executionQueue.length > 0) {
-      await new Promise(r => setTimeout(r, 300));
+    for (const decision of decisions) {
+      if (stopRef.current) break;
+      await processDecision(decision);
     }
 
     addMessage({ type: 'done', text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions` });
@@ -578,7 +513,6 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
       `}</style>
 
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
@@ -707,7 +641,7 @@ Rules: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merch
               </div>
             </div>
           )}
-          {loadingDecisions && <ThinkingShimmer modelColor={modelColor} />}
+
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((msg, i) => (
