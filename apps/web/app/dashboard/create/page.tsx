@@ -46,7 +46,7 @@ export default function CreatePass() {
     { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
     { prefix: '✓', color: T.teal, text: 'zkLogin signer ready · direct execution', delay: 800 },
     { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
-    { prefix: '→', color: T.blue, text: 'navis::edge_pass::create_pass', delay: 1600, indent: true },
+    { prefix: '→', color: T.blue, text: 'edge::edge_pass::create_pass', delay: 1600, indent: true },
     { prefix: '→', color: T.grey2, text: 'budget: ' + (budgetNum * 1_000_000_000) + ' MIST', delay: 1850, indent: true },
     { prefix: '→', color: T.grey2, text: 'auto_threshold: ' + (autoNum * 1_000_000_000) + ' MIST', delay: 2050, indent: true },
     { prefix: '→', color: T.grey2, text: 'escalate_threshold: ' + (escalateNum * 1_000_000_000) + ' MIST', delay: 2250, indent: true },
