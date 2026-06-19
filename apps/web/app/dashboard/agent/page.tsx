@@ -20,8 +20,8 @@ const T = {
 const AVAILABLE_MODELS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', provider: 'anthropic', description: 'Fast · Recommended', color: 'purple' },
   { id: 'claude-opus-4-6', label: 'Claude Opus', provider: 'anthropic', description: 'Most capable', color: 'purple' },
-  { id: 'gemini-1.5-flash', label: 'Gemini Flash', provider: 'google', description: 'Google · Fast', color: 'green' },
-  { id: 'gemini-1.5-pro', label: 'Gemini Pro', provider: 'google', description: 'Google · Capable', color: 'green' },
+  { id: 'gemini-2.0-flash', label: 'Gemini Flash', provider: 'google', description: 'Google · Fast', color: 'green' },
+  { id: 'gemini-1.5-pro-latest', label: 'Gemini Pro', provider: 'google', description: 'Google · Capable', color: 'green' },
 ];
 
 const SCENARIOS = {
