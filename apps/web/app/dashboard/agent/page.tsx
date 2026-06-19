@@ -89,7 +89,6 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
   const totalSpent = approved.reduce((s, t) => s + t.amount, 0);
   const budget = SCENARIOS[scenario].budget;
   const remaining = budget - totalSpent;
-
   const [printedLines, setPrintedLines] = useState<number[]>([]);
 
   useEffect(() => {
@@ -101,11 +100,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeUp 0.4s ease-out' }}>
-
-      {/* Receipt Card */}
       <div style={{ background: T.bgCard, border: '1px solid ' + T.tealBorder, borderRadius: 16, overflow: 'hidden' }}>
-
-        {/* Header */}
         <div style={{ background: T.tealDim, borderBottom: '1px dashed ' + T.tealBorder, padding: '18px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 28, marginBottom: 6 }}>🏴‍☠️</div>
           <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.teal, fontWeight: 700, letterSpacing: '0.1em' }}>EDGEPASS RECEIPT</div>
@@ -118,8 +113,6 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
         </div>
 
         <div style={{ padding: '16px 20px' }}>
-
-          {/* Line items */}
           <div style={{ borderBottom: '1px dashed ' + T.border, paddingBottom: 14, marginBottom: 14 }}>
             {outcomes.map((tx, i) => printedLines.includes(i) && (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, animation: 'fadeUp 0.2s ease-out' }}>
@@ -127,11 +120,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
                   <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: tx.status === 'approved' ? T.teal : tx.status === 'blocked' ? T.red : T.gold }}>
                     {tx.status === 'approved' ? '✓' : tx.status === 'blocked' ? '✗' : '⚡'}
                   </span>
-                  <span style={{
-                    fontSize: 12, fontFamily: 'Inter, sans-serif',
-                    color: tx.status === 'blocked' ? T.grey2 : T.grey1,
-                    textDecoration: tx.status === 'blocked' ? 'line-through' : 'none'
-                  }}>
+                  <span style={{ fontSize: 12, fontFamily: 'Inter, sans-serif', color: tx.status === 'blocked' ? T.grey2 : T.grey1, textDecoration: tx.status === 'blocked' ? 'line-through' : 'none' }}>
                     {tx.merchant}
                   </span>
                 </div>
@@ -142,10 +131,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
                       {tx.digest.slice(0, 6) + '...↗'}
                     </a>
                   )}
-                  <span style={{
-                    fontFamily: 'DM Mono, monospace', fontSize: 12,
-                    color: tx.status === 'approved' ? T.white : tx.status === 'blocked' ? T.red : T.gold
-                  }}>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: tx.status === 'approved' ? T.white : tx.status === 'blocked' ? T.red : T.gold }}>
                     {tx.status === 'blocked' ? 'BLOCKED' : tx.status === 'escalated' ? 'ESCALATED' : '$' + tx.amount.toFixed(2)}
                   </span>
                 </div>
@@ -153,7 +139,6 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
             ))}
           </div>
 
-          {/* Totals */}
           {printedLines.includes(outcomes.length) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14, animation: 'fadeUp 0.3s ease-out' }}>
               {[
@@ -170,7 +155,6 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
             </div>
           )}
 
-          {/* Closing */}
           {printedLines.includes(outcomes.length + 1) && (
             <div style={{ borderTop: '1px dashed ' + T.border, paddingTop: 14, animation: 'fadeUp 0.3s ease-out' }}>
               <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -179,11 +163,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
                   { label: '✗ ' + blocked.length + ' BLOCKED', color: T.red },
                   { label: '⚡ ' + escalated.length + ' ESCALATED', color: T.gold },
                 ].map(badge => (
-                  <span key={badge.label} style={{
-                    background: badge.color + '18', border: '1px solid ' + badge.color + '40',
-                    color: badge.color, fontSize: 9, fontFamily: 'DM Mono, monospace',
-                    letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6
-                  }}>
+                  <span key={badge.label} style={{ background: badge.color + '18', border: '1px solid ' + badge.color + '40', color: badge.color, fontSize: 9, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
                     {badge.label}
                   </span>
                 ))}
@@ -204,7 +184,6 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
         </div>
       </div>
 
-      {/* Walrus Audit Log */}
       {printedLines.includes(outcomes.length + 2) && (
         <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: '1px solid ' + T.border, animation: 'fadeUp 0.3s ease-out' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -216,8 +195,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
             <div>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
-              <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
+              <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
                 view on Walrus explorer
               </a>
             </div>
@@ -259,14 +237,10 @@ export default function AgentPage() {
   const modelColorBorder = modelInfo.color === 'green' ? T.greenBorder : T.purpleBorder;
 
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [messages]);
 
-  const addMessage = (msg: AgentMessage) => {
-    setMessages(prev => [...prev, msg]);
-  };
+  const addMessage = (msg: AgentMessage) => setMessages(prev => [...prev, msg]);
 
   const fetchDecisions = async (): Promise<AgentDecision[]> => {
     const systemPrompt = `You are an autonomous AI agent making spending decisions bounded by an EdgePass policy on Sui blockchain.
@@ -299,11 +273,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     const response = await fetch('/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system: systemPrompt,
-        message: 'Generate my spending decisions for this session.',
-        model: selectedModel,
-      }),
+      body: JSON.stringify({ system: systemPrompt, message: 'Generate my spending decisions for this session.', model: selectedModel }),
     });
 
     const data = await response.json();
@@ -313,25 +283,16 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
   };
 
   const runAgent = async () => {
-    setRunning(true);
-    setDone(false);
-    setMessages([]);
-    setOutcomes([]);
-    setSpent(0);
-    setTxCount(0);
-    setWalrusBlobId(null);
-    setWalrusLoading(false);
-    stopRef.current = false;
-    outcomesRef.current = [];
-    outcomeItemsRef.current = [];
+    setRunning(true); setDone(false); setMessages([]); setOutcomes([]);
+    setSpent(0); setTxCount(0); setWalrusBlobId(null); setWalrusLoading(false);
+    stopRef.current = false; outcomesRef.current = []; outcomeItemsRef.current = [];
 
     const passId = localStorage.getItem('edge_pass_id');
     const owner = getUserAddress();
 
     if (!passId || !owner) {
       addMessage({ type: 'system', text: 'No EdgePass found. Please create one first.' });
-      setRunning(false);
-      return;
+      setRunning(false); return;
     }
 
     addMessage({ type: 'system', text: 'Edge Agent v1.0 initializing...' });
@@ -340,7 +301,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     await new Promise(r => setTimeout(r, 600));
     addMessage({ type: 'system', text: `Policy loaded. Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
     await new Promise(r => setTimeout(r, 400));
-    addMessage({ type: 'system', text: `Consulting ${modelInfo.label} (${modelInfo.provider}) for autonomous decisions...` });
+    addMessage({ type: 'system', text: `Consulting ${modelInfo.label} for autonomous decisions...` });
 
     setLoadingDecisions(true);
     let decisions: AgentDecision[] = [];
@@ -373,18 +334,14 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
     const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-
-    let currentSpent = 0;
-    let approvedCount = 0;
+    let currentSpent = 0, approvedCount = 0;
 
     for (let i = 0; i < decisions.length; i++) {
       if (stopRef.current) break;
-
       const step = decisions[i];
 
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
       await new Promise(r => setTimeout(r, 1200));
-
       addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
       await new Promise(r => setTimeout(r, 800));
 
@@ -392,16 +349,11 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
         const passObj = await sdk.fetch(passId);
         if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass from chain.' }); break; }
 
-        const outcome = await sdk.execute(passObj, {
-          merchant: step.merchant,
-          amount: BigInt(Math.round(step.amount * 1_000_000_000)),
-        }, signer);
+        const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
 
         if (outcome.status === 'approved') {
-          currentSpent += step.amount;
-          approvedCount++;
-          setSpent(currentSpent);
-          setTxCount(approvedCount);
+          currentSpent += step.amount; approvedCount++;
+          setSpent(currentSpent); setTxCount(approvedCount);
           addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
@@ -420,24 +372,17 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       }
 
       await new Promise(r => setTimeout(r, 1000));
-
-      if (currentSpent >= BUDGET * 0.9) {
-        addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' });
-        break;
-      }
+      if (currentSpent >= BUDGET * 0.9) { addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' }); break; }
     }
 
     addMessage({ type: 'done', text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions` });
     setOutcomes([...outcomeItemsRef.current]);
-    setDone(true);
-    setRunning(false);
+    setDone(true); setRunning(false);
 
-    // Write audit log to Walrus
     if (outcomesRef.current.length > 0) {
       setWalrusLoading(true);
       const blobId = await writeAuditLogs(outcomesRef.current, passId);
-      setWalrusBlobId(blobId);
-      setWalrusLoading(false);
+      setWalrusBlobId(blobId); setWalrusLoading(false);
     }
   };
 
@@ -462,12 +407,22 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
 
+        {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 12, padding: 0, display: 'block' }}>back</button>
+          <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 16, padding: 0, display: 'block' }}>← back</button>
 
+          <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
+          <p style={{ color: T.grey2, fontSize: 13, margin: '0 0 20px', fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
+            {scenario === 'festival'
+              ? `${modelInfo.label} autonomously decides what to spend at the festival. Every decision executes against your EdgePass policy on-chain.`
+              : `${modelInfo.label} autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain.`}
+          </p>
+
+          {/* Switchers — only before run */}
           {!running && !done && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', minWidth: 64 }}>SCENARIO</span>
                 {(Object.keys(SCENARIOS) as Array<'festival' | 'defi'>).map(s => (
                   <button key={s} onClick={() => setScenario(s)}
                     style={{
@@ -483,16 +438,15 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
               </div>
 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>AI MODEL:</span>
+                <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', minWidth: 64 }}>MODEL</span>
                 {AVAILABLE_MODELS.map(m => {
                   const isSelected = selectedModel === m.id;
                   const btnColor = m.color === 'green' ? T.green : T.purple;
                   const btnDim = m.color === 'green' ? T.greenDim : T.purpleDim;
                   return (
-                    <button key={m.id} onClick={() => setSelectedModel(m.id)}
-                      title={m.description}
+                    <button key={m.id} onClick={() => setSelectedModel(m.id)} title={m.description}
                       style={{
-                        padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 10,
+                        padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11,
                         fontFamily: 'DM Mono, monospace', letterSpacing: '0.04em', transition: 'all 0.15s',
                         border: '1px solid ' + (isSelected ? btnColor : T.border),
                         background: isSelected ? btnDim : T.bgCard,
@@ -506,26 +460,24 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            <span style={{ background: modelColorDim, border: '1px solid ' + modelColorBorder, color: modelColor, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>
-              {modelInfo.label.toUpperCase()}
-            </span>
-            <span style={{ background: modelInfo.provider === 'google' ? T.greenDim : T.purpleDim, border: '1px solid ' + (modelInfo.provider === 'google' ? T.greenBorder : T.purpleBorder), color: modelInfo.provider === 'google' ? T.green : T.purple, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>
-              {modelInfo.provider === 'google' ? 'GOOGLE AI' : 'ANTHROPIC'}
-            </span>
-            <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>MAINNET</span>
-            <span style={{ background: T.blueDim, border: '1px solid ' + T.blueBorder, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>LIVE INFERENCE</span>
-          </div>
-
-          <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
-          <p style={{ color: T.grey2, fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
-            {scenario === 'festival'
-              ? `${modelInfo.label} autonomously decides what to buy at the festival. Every decision executes against your EdgePass policy on-chain. No wallet interruptions.`
-              : `${modelInfo.label} autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain. No wallet interruptions.`}
-          </p>
+          {/* Active config summary — shown during and after run */}
+          {(running || done) && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
+                {config.label.toUpperCase()}
+              </span>
+              <span style={{ background: modelColorDim, border: '1px solid ' + modelColorBorder, color: modelColor, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
+                {modelInfo.label}
+              </span>
+              <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
+                MAINNET
+              </span>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
           {[
             { l: 'Budget', v: '$' + BUDGET.toLocaleString(), c: T.grey1 },
             { l: 'Spent', v: '$' + spent.toFixed(2), c: spent > 0 ? T.teal : T.grey2 },
@@ -539,6 +491,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           ))}
         </div>
 
+        {/* Budget bar */}
         <div style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Budget utilization</span>
@@ -567,9 +520,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 8 }}>agent standing by_</div>
               <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
-                {scenario === 'festival'
-                  ? `${modelInfo.label} will autonomously decide what to buy at the festival`
-                  : `${modelInfo.label} will autonomously manage your DeFi positions`}
+                {scenario === 'festival' ? `${modelInfo.label} will autonomously decide what to buy at the festival` : `${modelInfo.label} will autonomously manage your DeFi positions`}
               </div>
             </div>
           )}
@@ -577,9 +528,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ animation: 'fadeUp 0.3s ease-out' }}>
-                {msg.type === 'system' && (
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{'> '}{msg.text}</div>
-                )}
+                {msg.type === 'system' && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{'> '}{msg.text}</div>}
                 {msg.type === 'thinking' && (
                   <div style={{ background: modelColorDim, border: '1px solid ' + modelColorBorder, borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -607,8 +556,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
                         <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)}</div>
                       </div>
                       {msg.digest && (
-                        <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
+                        <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
                           {msg.digest.slice(0, 8) + '...'}
                         </a>
                       )}
@@ -634,36 +582,28 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
                 )}
               </div>
             ))}
-            {running && (
-              <span style={{ display: 'inline-block', width: 8, height: 14, background: modelColor, verticalAlign: 'middle', animation: 'blink 1s step-end infinite', marginTop: 4 }} />
-            )}
+            {running && <span style={{ display: 'inline-block', width: 8, height: 14, background: modelColor, verticalAlign: 'middle', animation: 'blink 1s step-end infinite', marginTop: 4 }} />}
           </div>
         </div>
 
-        {/* Receipt card appears after completion */}
+        {/* Receipt */}
         {done && outcomes.length > 0 && (
-          <ReceiptCard
-            outcomes={outcomes}
-            scenario={scenario}
-            model={modelInfo.label}
-            walrusBlobId={walrusBlobId}
-            walrusLoading={walrusLoading}
-          />
+          <ReceiptCard outcomes={outcomes} scenario={scenario} model={modelInfo.label} walrusBlobId={walrusBlobId} walrusLoading={walrusLoading} />
         )}
 
         {/* Buttons */}
         {!done && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+          <div>
             {!running && (
               <button onClick={runAgent}
-                style={{ padding: 14, borderRadius: 12, border: 'none', background: modelColor, color: T.bg, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'opacity 0.2s' }}
+                style={{ width: '100%', padding: 16, borderRadius: 12, border: 'none', background: modelColor, color: T.bg, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
                 Run Agent
               </button>
             )}
             {running && (
-              <button onClick={stop} style={{ padding: 14, borderRadius: 12, border: '1px solid ' + T.border, background: T.bgCard, color: T.grey1, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace' }}>
+              <button onClick={stop} style={{ width: '100%', padding: 14, borderRadius: 12, border: '1px solid ' + T.border, background: T.bgCard, color: T.grey1, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace' }}>
                 $ stop agent
               </button>
             )}
@@ -672,19 +612,21 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
         {done && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <button onClick={reset} style={{ padding: 14, borderRadius: 12, border: '1px solid ' + T.border, background: 'transparent', color: T.grey1, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace', transition: 'all 0.2s' }}
+            <button onClick={reset}
+              style={{ padding: 14, borderRadius: 12, border: '1px solid ' + T.border, background: 'transparent', color: T.grey1, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Mono, monospace', transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.color = T.teal; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.grey1; }}>
               run again
             </button>
-            <button onClick={() => router.push('/dashboard')} style={{ padding: 14, borderRadius: 12, border: 'none', background: T.blue, color: T.white, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            <button onClick={() => router.push('/dashboard')}
+              style={{ padding: 14, borderRadius: 12, border: 'none', background: T.blue, color: T.white, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
               Back to Dashboard
             </button>
           </div>
         )}
 
         <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, marginTop: 12, fontFamily: 'DM Mono, monospace' }}>
-          powered by {modelInfo.label} · {modelInfo.provider} · policy enforced on-chain · zero wallet interruptions
+          powered by {modelInfo.label} · policy enforced on-chain · zero wallet interruptions
         </p>
 
       </div>
