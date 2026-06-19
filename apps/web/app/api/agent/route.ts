@@ -79,15 +79,13 @@ async function callGemini(model: string, system: string, message: string) {
 export async function POST(req: NextRequest) {
   try {
     const { system, message, model = 'claude-sonnet-4-6' } = await req.json();
-
-    console.log(`Agent route: using model ${model}`);
+    console.log('Agent route called:', { model, hasAnthropic: !!process.env.ANTHROPIC_API_KEY, hasGoogle: !!process.env.GOOGLE_API_KEY });
 
     let data;
 
     if (GEMINI_MODELS.includes(model)) {
       data = await callGemini(model, system, message);
     } else {
-      // Default to Anthropic for Claude models and unknown models
       data = await callAnthropic(model, system, message);
     }
 
