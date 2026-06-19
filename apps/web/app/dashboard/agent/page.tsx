@@ -159,6 +159,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     addMessage({ type: 'system', text: `Policy loaded. Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
     await new Promise(r => setTimeout(r, 400));
     addMessage({ type: 'system', text: 'Consulting Claude for autonomous decisions...' });
+      addMessage({ type: 'system', text: 'Model: claude-sonnet-4-6 · Anthropic API · live inference' });
 
     setLoadingDecisions(true);
     let decisions: AgentDecision[] = [];
