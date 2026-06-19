@@ -39,7 +39,6 @@ export function NavBar() {
         <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
           {[
             { label: 'Dashboard', path: '/dashboard' },
-            { label: 'Activity', path: '/dashboard/activity' },
             { label: 'Agent', path: '/dashboard/agent' },
           ].map(link => (
             <button
