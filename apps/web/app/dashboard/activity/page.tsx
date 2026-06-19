@@ -131,6 +131,155 @@ function TxRow({ tx }: { tx: TxItem }) {
   );
 }
 
+function ReceiptEndCard({ shown, policy, walrusBlobId, walrusLoading }: {
+  shown: TxItem[];
+  policy: PassPolicy;
+  walrusBlobId: string | null;
+  walrusLoading: boolean;
+}) {
+  const approved = shown.filter(t => t.status === 'approved');
+  const blocked = shown.filter(t => t.status === 'blocked');
+  const escalated = shown.filter(t => t.status === 'escalated');
+  const totalSpent = approved.reduce((s, t) => s + t.amount, 0);
+  const remaining = policy.budget - totalSpent;
+
+  const [printedLines, setPrintedLines] = useState<number[]>([]);
+
+  useEffect(() => {
+    const lineCount = shown.length + 6;
+    for (let i = 0; i < lineCount; i++) {
+      setTimeout(() => setPrintedLines(prev => [...prev, i]), i * 120);
+    }
+  }, []);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeUp 0.4s ease-out' }}>
+
+      {/* Receipt Card */}
+      <div style={{ background: T.bgCard, border: '1px solid ' + T.tealBorder, borderRadius: 16, overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: T.tealDim, borderBottom: '1px dashed ' + T.tealBorder, padding: '18px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>🏴‍☠️</div>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.teal, fontWeight: 700, letterSpacing: '0.1em' }}>EDGEPASS RECEIPT</div>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, marginTop: 4, letterSpacing: '0.06em' }}>
+            FESTIVAL MODE · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()}
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 20px' }}>
+
+          {/* Line items — print one by one */}
+          <div style={{ borderBottom: '1px dashed ' + T.border, paddingBottom: 14, marginBottom: 14 }}>
+            {shown.map((tx, i) => printedLines.includes(i) && (
+              <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, animation: 'fadeUp 0.2s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: tx.status === 'approved' ? T.teal : tx.status === 'blocked' ? T.red : T.gold }}>
+                    {tx.status === 'approved' ? '✓' : tx.status === 'blocked' ? '✗' : '⚡'}
+                  </span>
+                  <span style={{
+                    fontSize: 12, fontFamily: 'Inter, sans-serif',
+                    color: tx.status === 'blocked' ? T.grey2 : T.grey1,
+                    textDecoration: tx.status === 'blocked' ? 'line-through' : 'none'
+                  }}>
+                    {tx.merchant}
+                  </span>
+                </div>
+                <span style={{
+                  fontFamily: 'DM Mono, monospace', fontSize: 12,
+                  color: tx.status === 'approved' ? T.white : tx.status === 'blocked' ? T.red : T.gold
+                }}>
+                  {tx.status === 'blocked' ? 'BLOCKED' : tx.status === 'escalated' ? 'ESCALATED' : '$' + tx.amount.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Totals */}
+          {printedLines.includes(shown.length) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14, animation: 'fadeUp 0.3s ease-out' }}>
+              {[
+                { label: 'TOTAL SPENT', value: '$' + totalSpent.toFixed(2), color: T.white, large: true },
+                { label: 'BUDGET REMAINING', value: '$' + remaining.toFixed(2), color: T.teal, large: false },
+                { label: 'THREATS BLOCKED', value: String(blocked.length), color: T.red, large: false },
+                { label: 'WALLET INTERRUPTIONS', value: '0', color: T.grey2, large: false },
+              ].map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, letterSpacing: '0.06em' }}>{row.label}</span>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: row.large ? 16 : 12, color: row.color, fontWeight: row.large ? 700 : 400 }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Divider */}
+          {printedLines.includes(shown.length + 1) && (
+            <div style={{ borderTop: '1px dashed ' + T.border, paddingTop: 14, animation: 'fadeUp 0.3s ease-out' }}>
+
+              {/* Badge row */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[
+                  { label: '✓ ' + approved.length + ' APPROVED', color: T.teal },
+                  { label: '✗ ' + blocked.length + ' BLOCKED', color: T.red },
+                  { label: '⚡ ' + escalated.length + ' ESCALATED', color: T.gold },
+                ].map(badge => (
+                  <span key={badge.label} style={{
+                    background: badge.color + '18',
+                    border: '1px solid ' + badge.color + '40',
+                    color: badge.color,
+                    fontSize: 9, fontFamily: 'DM Mono, monospace',
+                    letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6
+                  }}>
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+
+              {/* Closing lines */}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.white, fontWeight: 700, marginBottom: 6 }}>
+                  {approved.length} purchases. {blocked.length} threat blocked. 0 interruptions.
+                </div>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, color: T.grey1, marginBottom: 14, lineHeight: 1.5 }}>
+                  Your agent handled it. You didn't have to.
+                </div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, letterSpacing: '0.08em' }}>
+                  Thank you for using EdgePass ✦
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Walrus Audit Log */}
+      {printedLines.includes(shown.length + 2) && (
+        <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: '1px solid ' + T.border, animation: 'fadeUp 0.3s ease-out' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Walrus Audit Log</span>
+            {walrusLoading && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
+          </div>
+          {walrusLoading && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>$ writing audit log to Walrus...</div>}
+          {walrusBlobId && (
+            <div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
+              <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
+                view on Walrus explorer
+              </a>
+            </div>
+          )}
+          {!walrusLoading && !walrusBlobId && (
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>audit log pending...</div>
+          )}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 export default function Activity() {
   const router = useRouter();
   const [policy, setPolicy] = useState<PassPolicy>(DEFAULT_POLICY);
@@ -148,7 +297,6 @@ export default function Activity() {
   const ref = useRef(false);
   const autoRef = useRef(false);
 
-  // Load policy from localStorage on mount
   useEffect(() => {
     const passes = JSON.parse(localStorage.getItem('edge_passes') || '[]');
     if (passes.length > 0) {
@@ -160,8 +308,6 @@ export default function Activity() {
         merchants: latest.merchants || DEFAULT_POLICY.merchants,
       };
       setPolicy(p);
-
-      // Build transactions dynamically based on policy
       const txs: TxItem[] = [
         { id: 1, merchant: p.merchants[0] || 'Shuttle Express', amount: Math.min(p.autoThreshold * 0.4, 20), status: 'approved', auto: true, digest: null, note: 'Auto-approved · under threshold' },
         { id: 2, merchant: p.merchants[2] || 'Hydra Bar', amount: Math.min(p.autoThreshold * 0.65, 32), status: 'approved', auto: true, digest: null, note: 'Auto-approved · trusted merchant' },
@@ -290,7 +436,10 @@ export default function Activity() {
 
   return (
     <main style={{ minHeight: 'calc(100vh - 57px)', background: T.bg, padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}} @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`}</style>
+      <style>{`
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+      `}</style>
       {modal && <EscalationModal tx={modal} policy={policy} onApprove={approve} onDeny={deny} />}
 
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
@@ -388,32 +537,12 @@ export default function Activity() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeUp 0.4s ease-out' }}>
-            <div style={{ padding: 16, borderRadius: 12, background: T.tealDim, border: '1px solid ' + T.tealBorder, textAlign: 'center' }}>
-              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: T.teal, fontWeight: 700, marginBottom: 4 }}>✓ execution complete</div>
-              <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
-                {shown.filter(t => t.status === 'approved').length} approved · {shown.filter(t => t.status === 'blocked').length} blocked · 0 wallet popups
-              </div>
-            </div>
-
-            <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: '1px solid ' + T.border }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Walrus Audit Log</span>
-                {walrusLoading && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />}
-              </div>
-              {walrusLoading && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>$ writing audit log to Walrus...</div>}
-              {walrusBlobId && (
-                <div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.teal, marginBottom: 8 }}>✓ audit log stored on Walrus</div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, wordBreak: 'break-all', marginBottom: 8 }}>{walrusBlobId}</div>
-                  <a href={walrusExplorerUrl(walrusBlobId)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
-                    view on Walrus explorer
-                  </a>
-                </div>
-              )}
-              {!walrusLoading && !walrusBlobId && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2 }}>audit log pending...</div>}
-            </div>
-          </div>
+          <ReceiptEndCard
+            shown={shown}
+            policy={policy}
+            walrusBlobId={walrusBlobId}
+            walrusLoading={walrusLoading}
+          />
         )}
 
         <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, marginTop: 12, fontFamily: 'DM Mono, monospace' }}>
