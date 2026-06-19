@@ -15,9 +15,32 @@ const T = {
   white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
 
-const BUDGET = 300;
-const AUTO_THRESHOLD = 50;
-const ESCALATE_THRESHOLD = 100;
+const SCENARIOS = {
+  festival: {
+    label: 'Festival Mode',
+    budget: 500,
+    autoThreshold: 75,
+    escalateThreshold: 150,
+    merchants: ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch', 'ShadyTokens.xyz'],
+    context: `You are an AI agent attending a music festival with a spending budget managed by EdgePass on Sui blockchain.
+You need to make autonomous spending decisions throughout the day.
+The festival has the following approved vendors: Shuttle Express (transport), Festival Kitchen (food), Hydra Bar (drinks), Stage Access VIP (upgrades), Official Merch (merchandise).
+There is also ShadyTokens.xyz which is NOT on the approved list — you should attempt it to demonstrate policy enforcement.
+Make realistic spending decisions that tell a story of a day at the festival.`,
+  },
+  defi: {
+    label: 'DeFi Trading',
+    budget: 10000,
+    autoThreshold: 500,
+    escalateThreshold: 2000,
+    merchants: ['DeepBook', 'Cetus', 'Turbos Finance', 'Scallop', 'UnknownDEX.xyz'],
+    context: `You are an autonomous DeFi trading agent managing a portfolio on Sui blockchain.
+You need to make swap and liquidity decisions across approved DEX protocols.
+Approved protocols: DeepBook (spot trading), Cetus (AMM swaps), Turbos Finance (concentrated liquidity), Scallop (lending/borrowing).
+UnknownDEX.xyz is NOT approved — attempt it to demonstrate policy enforcement.
+Make realistic DeFi trading decisions — swaps, liquidity provision, yield optimization.`,
+  },
+};
 
 interface AgentMessage {
   type: 'thinking' | 'decision' | 'outcome' | 'system' | 'done';
@@ -28,55 +51,29 @@ interface AgentMessage {
   digest?: string;
 }
 
-// Scripted agent decisions that demonstrate the full policy narrative
-const AGENT_SCRIPT = [
-  {
-    thinking: 'Starting with transport — need to get to the main stage. Shuttle Express is on the approved list and $18.50 is well under the auto-approve threshold.',
-    merchant: 'Shuttle Express',
-    amount: 18.50,
-    reasoning: 'Getting transport to the main stage first — essential and within auto-approve limits.',
-  },
-  {
-    thinking: 'Been a long day. Hydra Bar is approved and $14.00 for drinks is under $50 threshold — this should auto-approve.',
-    merchant: 'Hydra Bar',
-    amount: 14.00,
-    reasoning: 'Staying hydrated at the festival — $14 is well within the auto-approve threshold.',
-  },
-  {
-    thinking: 'Hungry now. Festival Kitchen looks good — $22 for a meal is reasonable and approved.',
-    merchant: 'Festival Kitchen',
-    amount: 22.00,
-    reasoning: 'Grabbing food at Festival Kitchen — $22 is a reasonable meal cost under threshold.',
-  },
-  {
-    thinking: 'I want to grab some merchandise. Official Merch is approved. $45 hoodie is under the $50 threshold — should auto-approve.',
-    merchant: 'Official Merch',
-    amount: 45.00,
-    reasoning: 'Getting official merch — $45 hoodie is just under the auto-approve limit.',
-  },
-  {
-    thinking: 'Stage Access VIP upgrade would be amazing — $85. That is above the $50 auto-approve threshold but under $100 escalation threshold. Worth attempting.',
-    merchant: 'Stage Access VIP',
-    amount: 85.00,
-    reasoning: 'Attempting VIP stage access upgrade — $85 is above auto-approve but within policy limits.',
-  },
-  {
-    thinking: 'ShadyTokens.xyz is offering a deal for $0.01. Checking against approved merchant list...',
-    merchant: 'ShadyTokens.xyz',
-    amount: 0.01,
-    reasoning: 'Attempting micro-transaction — checking policy.',
-  },
-];
+interface AgentDecision {
+  thinking: string;
+  merchant: string;
+  amount: number;
+  reasoning: string;
+}
 
 export default function AgentPage() {
   const router = useRouter();
+  const [scenario, setScenario] = useState<'festival' | 'defi'>('festival');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [spent, setSpent] = useState(0);
   const [txCount, setTxCount] = useState(0);
+  const [loadingDecisions, setLoadingDecisions] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const stopRef = useRef(false);
+
+  const config = SCENARIOS[scenario];
+  const BUDGET = config.budget;
+  const AUTO_THRESHOLD = config.autoThreshold;
+  const ESCALATE_THRESHOLD = config.escalateThreshold;
 
   useEffect(() => {
     if (logRef.current) {
@@ -86,6 +83,51 @@ export default function AgentPage() {
 
   const addMessage = (msg: AgentMessage) => {
     setMessages(prev => [...prev, msg]);
+  };
+
+  const fetchDecisionsFromClaude = async (): Promise<AgentDecision[]> => {
+    const systemPrompt = `You are an autonomous AI agent making spending decisions bounded by an EdgePass policy on Sui blockchain.
+
+${config.context}
+
+Your EdgePass policy:
+- Total budget: $${BUDGET}
+- Auto-approve threshold: $${AUTO_THRESHOLD} (transactions below this execute automatically)
+- Escalation threshold: $${ESCALATE_THRESHOLD} (transactions above this require human approval)
+- Approved merchants: ${config.merchants.slice(0, -1).join(', ')}
+- The last merchant in your list is NOT approved — include it to demonstrate policy enforcement
+
+Generate exactly 6 spending decisions that demonstrate:
+1. Several auto-approved transactions (under $${AUTO_THRESHOLD})
+2. At least one transaction between thresholds (auto-approve but notable)
+3. One attempt at the UNAPPROVED merchant (will be blocked)
+4. One transaction that exceeds $${ESCALATE_THRESHOLD} (will be escalated)
+
+Respond ONLY with a valid JSON array, no markdown, no explanation:
+[
+  {
+    "thinking": "Your internal reasoning about this decision (2-3 sentences, realistic and specific)",
+    "merchant": "Exact merchant name from the approved list or the unapproved one",
+    "amount": 42.50,
+    "reasoning": "One sentence explanation shown in the UI"
+  }
+]`;
+
+    const response = await fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: systemPrompt,
+        message: 'Generate my spending decisions for this session.',
+      }),
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+
+    // Clean and parse JSON
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
   };
 
   const runAgent = async () => {
@@ -106,13 +148,42 @@ export default function AgentPage() {
     }
 
     addMessage({ type: 'system', text: 'Edge Agent v1.0 initializing...' });
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 400));
     addMessage({ type: 'system', text: 'Loading EdgePass policy from Sui mainnet...' });
-    await new Promise(r => setTimeout(r, 800));
-    addMessage({ type: 'system', text: 'Policy loaded. Budget: $' + BUDGET + ' · Auto: <$' + AUTO_THRESHOLD + ' · Escalate: >$' + ESCALATE_THRESHOLD });
-    await new Promise(r => setTimeout(r, 500));
-    addMessage({ type: 'system', text: 'Claude agent online. Beginning autonomous execution...' });
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 600));
+    addMessage({ type: 'system', text: `Policy loaded. Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
+    await new Promise(r => setTimeout(r, 400));
+    addMessage({ type: 'system', text: 'Consulting Claude for autonomous decisions...' });
+
+    setLoadingDecisions(true);
+    let decisions: AgentDecision[] = [];
+
+    try {
+      decisions = await fetchDecisionsFromClaude();
+      addMessage({ type: 'system', text: `Claude generated ${decisions.length} decisions. Beginning execution...` });
+    } catch (e) {
+      console.error('Claude decisions failed:', e);
+      addMessage({ type: 'system', text: 'Claude API unavailable — using fallback decisions.' });
+      // Fallback to ensure demo never breaks
+      decisions = scenario === 'festival' ? [
+        { thinking: 'Need transport to the main stage. Shuttle Express is approved and $45 is under the auto-approve threshold.', merchant: 'Shuttle Express', amount: 45.00, reasoning: 'Transport to main stage — within auto-approve limits.' },
+        { thinking: 'Getting hungry. Festival Kitchen is approved and $38 for food is reasonable.', merchant: 'Festival Kitchen', amount: 38.00, reasoning: 'Grabbing food — well within policy limits.' },
+        { thinking: 'Drinks at Hydra Bar — $65 is approved and under threshold.', merchant: 'Hydra Bar', amount: 65.00, reasoning: 'Staying refreshed — approved merchant, under threshold.' },
+        { thinking: 'ShadyTokens.xyz is offering a deal. Let me check if they are approved...', merchant: 'ShadyTokens.xyz', amount: 0.01, reasoning: 'Checking unknown merchant against policy.' },
+        { thinking: 'Official merch — $70 hoodie is just under the auto-approve limit.', merchant: 'Official Merch', amount: 70.00, reasoning: 'Getting official merchandise — under threshold.' },
+        { thinking: 'Stage Access VIP upgrade is $220 — above the $150 escalation threshold. This will need human approval.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' },
+      ] : [
+        { thinking: 'Swapping SUI to USDC on DeepBook — $180 is well under the auto-approve threshold.', merchant: 'DeepBook', amount: 180.00, reasoning: 'Spot swap on DeepBook — under auto-approve threshold.' },
+        { thinking: 'Adding liquidity to Cetus pool — $420 is within policy limits.', merchant: 'Cetus', amount: 420.00, reasoning: 'Liquidity provision on Cetus AMM.' },
+        { thinking: 'UnknownDEX.xyz is offering high yield. Checking approved protocol list...', merchant: 'UnknownDEX.xyz', amount: 100.00, reasoning: 'Checking unknown protocol against approved list.' },
+        { thinking: 'Turbos Finance concentrated liquidity position — $480 is just under the threshold.', merchant: 'Turbos Finance', amount: 480.00, reasoning: 'Concentrated liquidity on Turbos — under threshold.' },
+        { thinking: 'Scallop lending — depositing $800 for yield. Above auto-approve but under escalation threshold.', merchant: 'Scallop', amount: 800.00, reasoning: 'Lending position on Scallop — within policy range.' },
+        { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold. Routing to human approval.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
+      ];
+    }
+
+    setLoadingDecisions(false);
+    await new Promise(r => setTimeout(r, 400));
 
     const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
@@ -120,25 +191,22 @@ export default function AgentPage() {
     let currentSpent = 0;
     let approvedCount = 0;
 
-    for (let i = 0; i < AGENT_SCRIPT.length; i++) {
+    for (let i = 0; i < decisions.length; i++) {
       if (stopRef.current) break;
 
-      const step = AGENT_SCRIPT[i];
+      const step = decisions[i];
 
-      // Show thinking
       addMessage({ type: 'thinking', text: step.thinking });
       await new Promise(r => setTimeout(r, 1200));
 
-      // Show decision
       addMessage({
         type: 'decision',
         text: step.reasoning,
         merchant: step.merchant,
         amount: step.amount,
       });
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 800));
 
-      // Execute on-chain
       try {
         const passObj = await sdk.fetch(passId);
         if (!passObj) {
@@ -186,7 +254,7 @@ export default function AgentPage() {
         addMessage({ type: 'system', text: 'Execution error — continuing to next decision' });
       }
 
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r => setTimeout(r, 1000));
 
       if (currentSpent >= BUDGET * 0.9) {
         addMessage({ type: 'system', text: 'Budget nearly exhausted. Agent stopping.' });
@@ -196,7 +264,7 @@ export default function AgentPage() {
 
     addMessage({
       type: 'done',
-      text: approvedCount + ' transactions executed autonomously · $' + currentSpent.toFixed(2) + ' spent · 0 wallet interruptions',
+      text: `${approvedCount} transactions executed autonomously · $${currentSpent.toFixed(2)} spent · 0 wallet interruptions`,
     });
     setDone(true);
     setRunning(false);
@@ -231,19 +299,41 @@ export default function AgentPage() {
 
         <div style={{ marginBottom: 24 }}>
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 12, padding: 0, display: 'block' }}>back</button>
+
+          {/* Scenario switcher */}
+          {!running && !done && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {(Object.keys(SCENARIOS) as Array<'festival' | 'defi'>).map(s => (
+                <button key={s} onClick={() => setScenario(s)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11,
+                    fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', transition: 'all 0.15s',
+                    border: '1px solid ' + (scenario === s ? T.teal : T.border),
+                    background: scenario === s ? T.tealDim : T.bgCard,
+                    color: scenario === s ? T.teal : T.grey2,
+                  }}>
+                  {SCENARIOS[s].label.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <span style={{ background: T.purpleDim, border: '1px solid ' + T.purpleBorder, color: T.purple, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>CLAUDE AGENT</span>
             <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>MAINNET</span>
+            <span style={{ background: T.blueDim, border: '1px solid ' + T.blueBorder, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>{config.label.toUpperCase()}</span>
           </div>
           <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
           <p style={{ color: T.grey2, fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
-            Claude autonomously decides what to buy at the festival. Every decision executes against your EdgePass policy on-chain. No wallet interruptions.
+            {scenario === 'festival'
+              ? 'Claude autonomously decides what to buy at the festival. Every decision executes against your EdgePass policy on-chain. No wallet interruptions.'
+              : 'Claude autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain. No wallet interruptions.'}
           </p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
           {[
-            { l: 'Budget', v: '$' + BUDGET, c: T.grey1 },
+            { l: 'Budget', v: '$' + BUDGET.toLocaleString(), c: T.grey1 },
             { l: 'Spent', v: '$' + spent.toFixed(2), c: spent > 0 ? T.teal : T.grey2 },
             { l: 'Txs executed', v: String(txCount), c: txCount > 0 ? T.teal : T.grey2 },
             { l: 'Wallet popups', v: '0', c: T.grey2 },
@@ -265,16 +355,15 @@ export default function AgentPage() {
           </div>
         </div>
 
-        <div
-          ref={logRef}
-          style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '16px 20px', marginBottom: 14, minHeight: 280, maxHeight: 420, overflowY: 'auto' }}
-        >
+        <div ref={logRef} style={{ background: T.bgCard, border: '1px solid ' + T.border, borderRadius: 16, padding: '16px 20px', marginBottom: 14, minHeight: 280, maxHeight: 420, overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Agent Log</span>
             {running && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.purple, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: T.purple, fontFamily: 'DM Mono, monospace' }}>agent running</span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingDecisions ? T.gold : T.purple, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />
+                <span style={{ fontSize: 11, color: loadingDecisions ? T.gold : T.purple, fontFamily: 'DM Mono, monospace' }}>
+                  {loadingDecisions ? 'consulting claude...' : 'agent running'}
+                </span>
               </div>
             )}
           </div>
@@ -282,27 +371,26 @@ export default function AgentPage() {
           {messages.length === 0 && (
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 8 }}>agent standing by_</div>
-              <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>Press Run Agent to watch Claude make autonomous spending decisions</div>
+              <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
+                {scenario === 'festival'
+                  ? 'Claude will autonomously decide what to buy at the festival'
+                  : 'Claude will autonomously manage your DeFi positions'}
+              </div>
             </div>
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ animation: 'fadeUp 0.3s ease-out' }}>
-
                 {msg.type === 'system' && (
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>
-                    {'> '}{msg.text}
-                  </div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{'> '}{msg.text}</div>
                 )}
-
                 {msg.type === 'thinking' && (
                   <div style={{ background: T.purpleDim, border: '1px solid ' + T.purpleBorder, borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: T.purple, fontFamily: 'DM Mono, monospace', marginBottom: 4, letterSpacing: '0.06em' }}>CLAUDE THINKING</div>
                     <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif', fontStyle: 'italic' }}>{msg.text}</div>
                   </div>
                 )}
-
                 {msg.type === 'decision' && (
                   <div style={{ background: T.blueDim, border: '1px solid ' + T.blueBorder, borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', marginBottom: 6, letterSpacing: '0.06em' }}>AGENT DECISION</div>
@@ -313,7 +401,6 @@ export default function AgentPage() {
                     <div style={{ fontSize: 11, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>{msg.text}</div>
                   </div>
                 )}
-
                 {msg.type === 'outcome' && msg.status === 'approved' && (
                   <div style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -322,42 +409,33 @@ export default function AgentPage() {
                         <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)}</div>
                       </div>
                       {msg.digest && (
-                        <a
-                          href={'https://suiscan.xyz/mainnet/tx/' + msg.digest}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}
-                        >
+                        <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
                           {msg.digest.slice(0, 8) + '...'}
                         </a>
                       )}
                     </div>
                   </div>
                 )}
-
                 {msg.type === 'outcome' && msg.status === 'blocked' && (
                   <div style={{ background: T.redDim, border: '1px solid rgba(255,77,106,0.3)', borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: T.red, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>BLOCKED BY POLICY</div>
                     <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)} · {msg.text}</div>
                   </div>
                 )}
-
                 {msg.type === 'outcome' && msg.status === 'escalated' && (
                   <div style={{ background: T.goldDim, border: '1px solid rgba(255,184,48,0.3)', borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: T.gold, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>ESCALATED</div>
                     <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)} · {msg.text}</div>
                   </div>
                 )}
-
                 {msg.type === 'done' && (
                   <div style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.teal, fontWeight: 700 }}>{msg.text}</div>
                   </div>
                 )}
-
               </div>
             ))}
-
             {running && (
               <span style={{ display: 'inline-block', width: 8, height: 14, background: T.purple, verticalAlign: 'middle', animation: 'blink 1s step-end infinite', marginTop: 4 }} />
             )}
