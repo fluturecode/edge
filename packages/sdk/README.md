@@ -1,20 +1,20 @@
 # @edge-protocol/sdk
 
 [![npm version](https://img.shields.io/npm/v/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
-[![npm downloads](https://img.shields.io/npm/dm/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
-[![Tests](https://img.shields.io/badge/tests-34%20passed-brightgreen)](https://github.com/fluturecode/edge)
-[![Built on Sui](https://img.shields.io/badge/built%20on-Sui-6fbcf0)](https://sui.io)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![npm downloads](https://img.shields.io/npm/dw/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
+[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen)](https://github.com/fluturecode/edge)
+[![Built on Sui](https://img.shields.io/badge/built%20on-Sui-blue)](https://sui.io)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **Give agents your rules, not your keys.**
+Give agents your rules, not your keys.
 
-[Live Demo](https://edge-web-cyan.vercel.app) · [Full Docs](https://github.com/fluturecode/edge/blob/main/packages/sdk/DOCS.md) · [GitHub](https://github.com/fluturecode/edge)
+[Live Demo](https://edge-web-cyan.vercel.app) · [Full Docs](DOCS.md) · [GitHub](https://github.com/fluturecode/edge)
 
 ---
 
 As autonomous agents begin managing real assets onchain, they need a trust layer that governs how they interact with them. Raw private keys are a security nightmare. Requiring human approval for every transaction defeats the purpose of automation.
 
-**EdgePass is the policy layer** — scoped, programmatic spend authority issued directly to agent runtimes, with cryptographic guardrails enforced by the Sui VM. Not a payment rail. Not a wallet. The boundary between what an agent can do and what it cannot.
+EdgePass is the policy layer — scoped, programmatic spend authority issued directly to agent runtimes, with cryptographic guardrails enforced by the Sui VM. Not a payment rail. Not a wallet. The boundary between what an agent can do and what it cannot.
 
 ---
 
@@ -38,11 +38,11 @@ Every EdgePass is a native Sui Move object encoding five distinct governance dim
 
 | Dimension | What it controls |
 |-----------|-----------------|
-| **BUDGET** | Maximum global spending ceiling |
-| **VELOCITY** | Auto-approve threshold before escalation fires |
-| **SCOPE** | Explicit allowlist of approved merchants / contracts |
-| **TIME** | Hard cryptographic expiration date |
-| **ESCALATION** | Programmatic fallback when a limit is exceeded |
+| BUDGET | Maximum global spending ceiling |
+| VELOCITY | Auto-approve threshold before escalation fires |
+| SCOPE | Explicit allowlist of approved merchants / contracts |
+| TIME | Hard cryptographic expiration date |
+| ESCALATION | Programmatic fallback when a limit is exceeded |
 
 ---
 
@@ -58,7 +58,8 @@ EdgePass.fromTemplate('defi',         { owner })  // $10k  · auto <$500 · esca
 EdgePass.fromTemplate('enterprise',   { owner })  // $50k  · auto <$1k  · escalate >$5k  · 30d
 ```
 
-**Example — brand licensing agent:**
+Example — brand licensing agent:
+
 ```typescript
 EdgePass.fromTemplate('enterprise', {
   approvedMerchants: ['nike-licensing.sui', 'brand-registry.sui'],
@@ -66,6 +67,54 @@ EdgePass.fromTemplate('enterprise', {
   owner: cfoAddress,
 })
 // Enforce IP usage terms autonomously — no lawyers, no monitoring, no surprises
+```
+
+---
+
+## 🔮 Simulate Before You Execute
+
+Plan an agent's session without touching the chain. Zero network calls.
+
+```typescript
+const plan = sdk.simulate(pass, [
+  { merchant: 'Shuttle Express',  amount: 45n * MIST_PER_SUI },
+  { merchant: 'ShadyTokens.xyz',  amount: 1n },
+  { merchant: 'Stage Access VIP', amount: 220n * MIST_PER_SUI },
+]);
+
+console.log(plan.summary);
+// { approvedCount: 1, blockedCount: 1, escalatedCount: 1, totalDecisions: 3 }
+
+console.log(plan.utilizationPct); // projected budget usage after approved decisions
+console.log(plan.remainingBudget); // projected remaining in MIST
+
+// Show plan to user, then execute approved decisions
+for (const decision of plan.approved) {
+  await sdk.execute(pass, decision.request, signer);
+}
+```
+
+---
+
+## 💰 Budget Intelligence
+
+```typescript
+const status = sdk.budgetStatus(pass);
+// {
+//   budget: 500000000000n,
+//   spent: 218000000000n,
+//   remaining: 282000000000n,
+//   utilizationPct: 43.6,
+//   isNearLimit: false,   // true when > 80%
+//   isExhausted: false,
+// }
+
+sdk.utilizationPct(pass)         // 43.6
+sdk.isNearLimit(pass)            // false (default threshold: 80%)
+sdk.isNearLimit(pass, 0.5)       // true if > 50% spent
+sdk.remainingBudget(pass)        // 282000000000n MIST
+sdk.timeRemaining(pass)          // ms until expiry
+sdk.isExpiringSoon(pass)         // true if expires within 1 hour
 ```
 
 ---
@@ -91,11 +140,26 @@ export const autonomousPurchaseTool = tool({
       amount: BigInt(Math.floor(amountSUI * 1e9)),
     }, agentSigner);
 
-    if (outcome.status === 'blocked')   return { success: false, error: `Blocked by EdgePass policy: ${outcome.reason}` };
-    if (outcome.status === 'escalated') return { success: false, error: `Paused — human approval required: ${outcome.reason}` };
+    if (outcome.status === 'blocked')   return { success: false, error: `Blocked: ${outcome.reason}` };
+    if (outcome.status === 'escalated') return { success: false, error: `Escalated: ${outcome.reason}` };
 
     return { success: true, digest: outcome.digest };
   }
+});
+```
+
+### `withPolicy` — Wrap Any Tool
+
+```typescript
+const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (request) => {
+  return await purchaseItem(request.merchant, request.amount);
+});
+
+// safePurchase enforces EdgePass policy automatically
+// blocked/escalated never reach your tool logic
+const { outcome, result } = await safePurchase({
+  merchant: 'Hydra Bar',
+  amount: 32n * MIST_PER_SUI,
 });
 ```
 
@@ -118,6 +182,41 @@ The transaction was executed on-chain and logged to Walrus.
 
 ---
 
+## ⚛️ React Hook
+
+```typescript
+import { useEdgePass } from '@edge-protocol/sdk/react';
+
+function AgentDashboard({ passId, signer }) {
+  const { pass, execute, simulate, budgetStatus, loading } = useEdgePass({
+    passId,
+    network: 'mainnet',
+    enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY!,
+    signer,
+    autoRefresh: true, // re-fetch after every approved execute
+  });
+
+  if (loading) return <Spinner />;
+  if (!pass)   return <div>Pass not found</div>;
+
+  return (
+    <div>
+      <progress value={budgetStatus?.utilizationPct} max={100} />
+      <button onClick={() => execute({ merchant: 'Hydra Bar', amount: 32n * MIST_PER_SUI })}>
+        Purchase
+      </button>
+    </div>
+  );
+}
+```
+
+Three hooks available:
+- `useEdgePass` — full featured: fetch, execute, simulate, budgetStatus, refresh
+- `useBudgetStatus` — lightweight budget display
+- `useSimulate` — reactive simulation when requests change
+
+---
+
 ## 📊 Execution Results
 
 Every `sdk.execute()` returns a structured outcome — not a flat string:
@@ -127,6 +226,7 @@ type TransactionOutcome =
   | { status: 'approved';  digest: string; auto: true;  }
   | { status: 'escalated'; reason: string; auto: false; }
   | { status: 'blocked';   reason: string; auto: false; }
+  | { status: 'error';     reason: string; code?: string; auto: false; }
 
 // Approved
 { status: 'approved', digest: '4REcPLezK8gF...', auto: true }
@@ -164,7 +264,7 @@ await sdk.execute(pass, request, signer);
 
 ## 🔌 Pluggable Escalation Handlers
 
-Route escalation alerts to dashboards, Slack, or Telegram:
+Route escalation alerts to Slack, Telegram, or your dashboard:
 
 ```typescript
 sdk.on('escalated', async ({ outcome, request }) => {
@@ -179,21 +279,7 @@ sdk.on('escalated', async ({ outcome, request }) => {
 
 ---
 
-## 📜 Cryptographic Audit Trail
-
-Every execution writes an immutable receipt to Walrus — decentralized, tamper-evident, permanent. No database. No server. Cryptographically committed.
-
-```typescript
-const outcome = await sdk.execute(pass, request, signer);
-// audit receipt automatically written to Walrus
-// verifiable at walruscan.com/mainnet/blob/{blobId}
-```
-
----
-
 ## 🔍 Preview Without Executing
-
-Zero network calls. Sub-millisecond. Use for UI previews:
 
 ```typescript
 const preview = sdk.validate(pass, { merchant, amount });
@@ -229,8 +315,6 @@ assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
 ```
 
 If any assertion fails, the entire transaction reverts. A compromised agent cannot bypass the contract. **The chain is the trust boundary.**
-
-For production: always execute via the Move contract. The TypeScript layer is a preview — the chain is the guarantee.
 
 ---
 
@@ -273,6 +357,11 @@ pnpm add @edge-protocol/sdk
 yarn add @edge-protocol/sdk
 ```
 
+React hook (requires React 18+):
+```bash
+import { useEdgePass } from '@edge-protocol/sdk/react';
+```
+
 ---
 
 ## Competitive Positioning
@@ -302,6 +391,6 @@ Edge (policy layer)  →  x402 (payment rail)  →  Settlement
 
 *The best infrastructure is invisible.*
 
-Built for [Sui Overflow 2026](https://overflow.sui.io) · MIT License
+Built for Sui Overflow 2026 · MIT License
 
 [GitHub](https://github.com/fluturecode/edge) · [npm](https://npmjs.com/package/@edge-protocol/sdk)

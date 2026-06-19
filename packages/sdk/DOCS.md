@@ -14,7 +14,12 @@ pnpm add @edge-protocol/sdk
 - [Core Concepts](#core-concepts)
 - [Installation](#installation)
 - [EdgePass API](#edgepass-api)
+- [Simulation](#simulation)
+- [Budget Intelligence](#budget-intelligence)
+- [withPolicy](#withpolicy)
+- [React Hooks](#react-hooks)
 - [Templates](#templates)
+- [Events System](#events-system)
 - [PolicyEngine](#policyengine)
 - [Types](#types)
 - [Constants](#constants)
@@ -22,18 +27,14 @@ pnpm add @edge-protocol/sdk
 - [Error Handling](#error-handling)
 - [Architecture](#architecture)
 - [Move Contract](#move-contract)
-- [Competitive Positioning](#competitive-positioning)
 - [Security Model](#security-model)
 - [Testing](#testing)
-- [Links](#links)
 
 ---
 
 ## Core Concepts
 
 ### The Problem
-
-Every developer building an autonomous agent faces the same unsolved problem:
 
 ```
 Option A: Give the agent full wallet access  →  catastrophic risk
@@ -48,17 +49,18 @@ Option C: Build custom policy logic         →  6-8 weeks of work
 An EdgePass is a Sui Move object that encodes a complete trust policy. It lives in the user's wallet — not in a contract. An agent executes against it without ever taking ownership.
 
 ```
-budget: $300  ·  auto-approve: <$50  ·  escalate: >$100  ·  merchants: [...]  ·  expiry: 48h
+budget: $500  ·  auto-approve: <$75  ·  escalate: >$150  ·  merchants: [...]  ·  expiry: 48h
 ```
 
 ### Transaction Outcomes
 
-Every `sdk.execute()` returns one of three outcomes:
+Every `sdk.execute()` returns one of four outcomes:
 
 ```
 ✅ approved   — executed on-chain, digest available
 ⚠️  escalated  — exceeds threshold, needs user approval
 🚫 blocked    — policy rejected, reason provided
+❌ error      — infrastructure failure, tx NOT submitted
 ```
 
 ### MIST
@@ -67,11 +69,8 @@ All amounts are in MIST — Sui's base unit.
 
 ```typescript
 1 SUI = 1_000_000_000 MIST
-
 import { MIST_PER_SUI } from '@edge-protocol/sdk';
-
-const budget = 300n * MIST_PER_SUI; // 300 SUI
-const amount = 18_500_000_000n;      // 18.5 SUI
+const budget = 500n * MIST_PER_SUI; // 500 SUI
 ```
 
 ---
@@ -80,26 +79,20 @@ const amount = 18_500_000_000n;      // 18.5 SUI
 
 ```bash
 npm install @edge-protocol/sdk
-# or
 pnpm add @edge-protocol/sdk
-# or
 yarn add @edge-protocol/sdk
 ```
 
-### Requirements
-
-- Node.js 18+
-- TypeScript 5.0+ (recommended)
-- A Sui network (testnet or mainnet)
-- An Enoki API key for gas sponsorship
+React hook requires React 18+:
+```typescript
+import { useEdgePass } from '@edge-protocol/sdk/react';
+```
 
 ---
 
 ## EdgePass API
 
 ### `new EdgePass(config)`
-
-Initialize the SDK client.
 
 ```typescript
 import { EdgePass } from '@edge-protocol/sdk';
@@ -117,21 +110,21 @@ const sdk = new EdgePass({
 Mint a new EdgePass as a Move object on Sui.
 
 ```typescript
-import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
-
 const pass = await sdk.create({
-  budget:            300n * MIST_PER_SUI,   // total spend limit
-  autoThreshold:      50n * MIST_PER_SUI,   // auto-approve below this
-  escalateThreshold: 100n * MIST_PER_SUI,   // escalate above this
-  maxPerTransaction: 200n * MIST_PER_SUI,   // optional hard cap per tx
-  approvedMerchants: ['Shuttle Express', 'Hydra Bar'],
-  expiryMs:          48 * 60 * 60 * 1000,   // 48 hours
+  budget:            500n * MIST_PER_SUI,
+  autoThreshold:      75n * MIST_PER_SUI,
+  escalateThreshold: 150n * MIST_PER_SUI,
+  maxPerTransaction: 300n * MIST_PER_SUI,  // optional
+  approvedMerchants: ['Shuttle Express', 'Hydra Bar', 'Festival Kitchen'],
+  expiryMs:          48 * 60 * 60 * 1000,
   owner:             userAddress,
 }, signer);
 
-console.log(pass.id);        // Sui object ID — verifiable on Suiscan
+console.log(pass.id);        // Sui object ID
 console.log(pass.expiresAt); // Unix timestamp
 ```
+
+**Constraints:** `autoThreshold < escalateThreshold ≤ budget`
 
 **Parameters:**
 
@@ -142,28 +135,18 @@ console.log(pass.expiresAt); // Unix timestamp
 | `escalateThreshold` | `bigint` | ✅ | Escalate above this amount |
 | `maxPerTransaction` | `bigint` | ❌ | Hard cap per single transaction |
 | `approvedMerchants` | `string[]` | ✅ | Allowlist of merchant identifiers |
-| `expiryMs` | `number` | ✅ | Duration until expiry in milliseconds |
+| `expiryMs` | `number` | ✅ | Duration until expiry in ms |
 | `owner` | `string` | ✅ | Sui address of the pass owner |
-
-**Constraint:** `autoThreshold < escalateThreshold < budget`
 
 ---
 
 ### `EdgePass.fromTemplate(template, overrides)` → `EdgePassConfig`
 
-Create a config from a pre-built template. Override any field.
-
 ```typescript
-// Use a template as-is
-const config = EdgePass.fromTemplate('festival', { owner: userAddress });
-
-// Override specific fields
-const config = EdgePass.fromTemplate('defi', {
-  budget: 25_000n * MIST_PER_SUI,
-  approvedMerchants: ['DeepBook', 'Cetus', 'Turbos'],
+const config = EdgePass.fromTemplate('festival', {
+  approvedMerchants: ['Shuttle Express', 'Hydra Bar'],
   owner: userAddress,
 });
-
 const pass = await sdk.create(config, signer);
 ```
 
@@ -171,12 +154,12 @@ const pass = await sdk.create(config, signer);
 
 ### `sdk.execute(pass, request, signer)` → `Promise<TransactionOutcome>`
 
-Execute a transaction against an EdgePass. Policy is validated before touching the chain — blocked and escalated transactions never reach Sui.
+Execute a transaction against an EdgePass. Blocked and escalated decisions are validated locally — they never touch the chain.
 
 ```typescript
 const outcome = await sdk.execute(pass, {
   merchant: 'Shuttle Express',
-  amount:   18_500_000_000n, // 18.5 SUI in MIST
+  amount:   45n * MIST_PER_SUI,
 }, signer);
 
 switch (outcome.status) {
@@ -189,6 +172,9 @@ switch (outcome.status) {
   case 'blocked':
     console.log('blocked:', outcome.reason);
     break;
+  case 'error':
+    console.error('infrastructure failure:', outcome.reason);
+    break;
 }
 ```
 
@@ -196,36 +182,13 @@ switch (outcome.status) {
 
 ### `sdk.validate(pass, request)` → `PolicyValidation`
 
-Preview the outcome without executing. Zero network calls. Sub-millisecond.
+Preview a single transaction outcome. Zero network calls. Sub-millisecond.
 
 ```typescript
-const preview = sdk.validate(pass, {
-  merchant: 'Shuttle Express',
-  amount:   18_500_000_000n,
-});
-
-if (!preview.allowed) {
-  showBlockedUI(preview.reason);
-  return;
-}
-
-if (preview.requiresEscalation) {
-  showEscalationUI(preview.reason);
-  return;
-}
-
+const preview = sdk.validate(pass, { merchant, amount });
+if (!preview.allowed)           return showBlockedUI(preview.reason);
+if (preview.requiresEscalation) return showEscalationUI(preview.reason);
 const outcome = await sdk.execute(pass, request, signer);
-```
-
----
-
-### `sdk.revoke(pass, signer)` → `Promise<{ digest: string }>`
-
-Revoke an EdgePass on-chain. All future `execute()` calls return `blocked` immediately.
-
-```typescript
-const { digest } = await sdk.revoke(pass, signer);
-console.log('revoked:', digest);
 ```
 
 ---
@@ -236,20 +199,17 @@ Fetch a live EdgePass from the Sui network.
 
 ```typescript
 const pass = await sdk.fetch('0x4e2f...8b91');
-if (!pass) { console.log('EdgePass not found'); return; }
-const remaining = sdk.remainingBudget(pass);
+if (!pass) { console.log('not found'); return; }
 ```
 
 ---
 
-### `sdk.remainingBudget(pass)` → `bigint`
+### `sdk.revoke(pass, signer)` → `Promise<{ digest: string }>`
 
-Returns remaining budget in MIST.
+Revoke an EdgePass on-chain.
 
 ```typescript
-const remaining = sdk.remainingBudget(pass);
-const remainingSUI = Number(remaining) / Number(MIST_PER_SUI);
-console.log(`$${remainingSUI.toFixed(2)} remaining`);
+const { digest } = await sdk.revoke(pass, signer);
 ```
 
 ---
@@ -258,82 +218,224 @@ console.log(`$${remainingSUI.toFixed(2)} remaining`);
 
 Returns `true` if the pass is active and not expired.
 
+---
+
+## Simulation
+
+Plan an agent session without executing. Zero network calls. Sub-millisecond.
+
+### `sdk.simulate(pass, requests[])` → `SimulationResult`
+
 ```typescript
-if (!sdk.isValid(pass)) {
-  pass = await sdk.create(config, signer);
+const plan = sdk.simulate(pass, [
+  { merchant: 'Shuttle Express',  amount: 45n * MIST_PER_SUI },
+  { merchant: 'Festival Kitchen', amount: 22n * MIST_PER_SUI },
+  { merchant: 'ShadyTokens.xyz',  amount: 1n },
+  { merchant: 'Stage Access VIP', amount: 220n * MIST_PER_SUI },
+]);
+
+console.log(plan.summary);
+// { approvedCount: 2, blockedCount: 1, escalatedCount: 1, totalDecisions: 4 }
+
+console.log(plan.utilizationPct);   // projected budget usage after approved decisions
+console.log(plan.totalSpend);       // total MIST of approved decisions only
+console.log(plan.remainingBudget);  // projected remaining after all approved
+
+// Inspect individual decisions
+plan.approved.forEach(d => {
+  console.log(d.request.merchant, d.projectedRemaining);
+});
+
+// Show plan, then execute
+for (const decision of plan.approved) {
+  await sdk.execute(pass, decision.request, signer);
+}
+```
+
+**`SimulationResult`:**
+
+```typescript
+interface SimulationResult {
+  decisions:       SimulatedDecision[];  // all decisions in order
+  approved:        SimulatedDecision[];  // will execute on-chain
+  blocked:         SimulatedDecision[];  // rejected by policy
+  escalated:       SimulatedDecision[];  // need human approval
+  totalSpend:      bigint;               // sum of approved amounts
+  remainingBudget: bigint;               // projected remaining
+  utilizationPct:  number;               // 0-100
+  summary: {
+    approvedCount:  number;
+    blockedCount:   number;
+    escalatedCount: number;
+    totalDecisions: number;
+  };
+}
+```
+
+**`SimulatedDecision`:**
+
+```typescript
+interface SimulatedDecision {
+  request:            TransactionRequest;
+  outcome:            'approved' | 'escalated' | 'blocked';
+  reason:             string;
+  projectedSpent:     bigint;  // pass.spent after this decision
+  projectedRemaining: bigint;  // budget remaining after this decision
 }
 ```
 
 ---
 
-### `sdk.on(event, listener)` → `this`
+## Budget Intelligence
 
-Subscribe to transaction outcomes. Fires automatically after every `sdk.execute()` call. Returns the SDK instance for chaining.
+### `sdk.budgetStatus(pass, nearLimitThreshold?)` → `BudgetStatus`
 
 ```typescript
-sdk
-  .on('approved', ({ outcome, pass, request }) => {
-    console.log('executed:', outcome.digest);
-    updateBudgetUI(pass);
-  })
-  .on('escalated', ({ outcome, request }) => {
-    notifyUser(`Approve $${request.amount} at ${request.merchant}?`);
-  })
-  .on('blocked', ({ outcome, request }) => {
-    logger.warn(`blocked: ${outcome.reason}`);
-  });
+const status = sdk.budgetStatus(pass);
+// {
+//   budget:         500000000000n,
+//   spent:          218000000000n,
+//   remaining:      282000000000n,
+//   utilizationPct: 43.6,
+//   isNearLimit:    false,   // true when > 80% (configurable)
+//   isExhausted:    false,
+// }
 
-await sdk.execute(pass, request, signer);
+if (status.isExhausted) stopAgent();
+if (status.isNearLimit) warnUser(`${status.utilizationPct.toFixed(1)}% of budget used`);
 ```
 
-**Event payload:**
+### `sdk.utilizationPct(pass)` → `number`
+
+Budget utilization as 0-100. Use for progress bars.
+
+### `sdk.isNearLimit(pass, threshold?)` → `boolean`
+
+Returns `true` if utilization exceeds threshold (default 80%).
 
 ```typescript
-{ type: 'approved',  outcome: { status: 'approved',  digest: string, auto: true  }, pass, request }
-{ type: 'escalated', outcome: { status: 'escalated', reason: string, auto: false }, pass, request }
-{ type: 'blocked',   outcome: { status: 'blocked',   reason: string, auto: false }, pass, request }
+sdk.isNearLimit(pass)       // true if > 80% spent
+sdk.isNearLimit(pass, 0.5)  // true if > 50% spent
+```
+
+### `sdk.remainingBudget(pass)` → `bigint`
+
+Remaining budget in MIST.
+
+### `sdk.timeRemaining(pass)` → `number`
+
+Milliseconds until expiry. Returns 0 if expired.
+
+### `sdk.isExpiringSoon(pass, withinMs?)` → `boolean`
+
+Returns `true` if pass expires within the given window (default 1 hour).
+
+---
+
+## withPolicy
+
+Wrap any async function with EdgePass policy enforcement. The wrapped function only executes if the transaction is approved.
+
+### `EdgePass.withPolicy(pass, signer, sdk, fn)`
+
+```typescript
+const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (request) => {
+  // This only runs if EdgePass approves the transaction
+  return await purchaseItem(request.merchant, request.amount);
+});
+
+const { outcome, result } = await safePurchase({
+  merchant: 'Hydra Bar',
+  amount: 32n * MIST_PER_SUI,
+});
+
+// outcome.status === 'approved' | 'blocked' | 'escalated' | 'error'
+// result is undefined if blocked/escalated/error
+```
+
+Perfect for wrapping Vercel AI SDK tools:
+
+```typescript
+import { tool } from 'ai';
+import { z } from 'zod';
+
+export const purchaseTool = tool({
+  description: 'Purchase within EdgePass policy boundaries',
+  parameters: z.object({ merchant: z.string(), amountSUI: z.number() }),
+  execute: async ({ merchant, amountSUI }) => {
+    const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (req) => {
+      return await processPayment(req);
+    });
+    const { outcome } = await safePurchase({ merchant, amount: BigInt(Math.floor(amountSUI * 1e9)) });
+    if (outcome.status !== 'approved') return { success: false, reason: outcome.reason };
+    return { success: true, digest: outcome.digest };
+  }
+});
 ```
 
 ---
 
-### `sdk.off(event, listener)` → `this`
-
-Remove a specific listener.
+## React Hooks
 
 ```typescript
-const onApproved = ({ outcome }) => console.log(outcome.digest);
-sdk.on('approved', onApproved);
-sdk.off('approved', onApproved);
+import { useEdgePass, useBudgetStatus, useSimulate } from '@edge-protocol/sdk/react';
 ```
 
----
+### `useEdgePass(config)` → `UseEdgePassResult`
 
-### `sdk.removeAllListeners(event?)` → `this`
-
-Remove all listeners for an event, or all events if none specified.
+Full-featured hook. Fetches pass on mount, exposes execute/simulate/budgetStatus, refreshes after approved transactions.
 
 ```typescript
-sdk.removeAllListeners('approved'); // remove all approved listeners
-sdk.removeAllListeners();           // remove all listeners
+const {
+  pass,         // EdgePassObject | null
+  loading,      // boolean
+  error,        // Error | null
+  execute,      // (request) => Promise<TransactionOutcome>
+  simulate,     // (requests[]) => SimulationResult | null
+  budgetStatus, // BudgetStatus | null
+  refresh,      // () => Promise<void> — manually re-fetch
+  sdk,          // EdgePass instance
+} = useEdgePass({
+  passId:       'YOUR_PASS_ID',
+  network:      'mainnet',
+  enokiApiKey:  'YOUR_KEY',
+  signer,                      // optional — needed for execute()
+  autoRefresh:  true,          // re-fetch after approved execute (default: true)
+  pollInterval: 30_000,        // poll every 30s (default: 0 = disabled)
+});
+```
+
+### `useBudgetStatus(config)` → `BudgetStatus | null`
+
+Lightweight hook for budget display components.
+
+```typescript
+function BudgetBar({ passId }) {
+  const status = useBudgetStatus({ passId, network: 'mainnet', enokiApiKey: KEY });
+  return <progress value={status?.utilizationPct ?? 0} max={100} />;
+}
+```
+
+### `useSimulate(config, requests[])` → `SimulationResult | null`
+
+Reactive simulation hook. Re-runs whenever requests change.
+
+```typescript
+function AgentPlanPreview({ passId, decisions }) {
+  const plan = useSimulate({ passId, network: 'mainnet', enokiApiKey: KEY }, decisions);
+  if (!plan) return null;
+  return (
+    <div>
+      <span>{plan.summary.approvedCount} will execute</span>
+      <span>{plan.summary.blockedCount} will be blocked</span>
+    </div>
+  );
+}
 ```
 
 ---
 
 ## Templates
-
-Pre-configured trust boundaries for common use cases. Every template is a starting point — override any field.
-
-```typescript
-import { EdgePass, EDGE_TEMPLATES } from '@edge-protocol/sdk';
-
-EdgePass.fromTemplate('festival',     { owner })  // $300  / 48h
-EdgePass.fromTemplate('gaming',       { owner })  // $50   / 4h session
-EdgePass.fromTemplate('subscription', { owner })  // $200  / 30 days
-EdgePass.fromTemplate('defi',         { owner })  // $10k  / 7 days
-EdgePass.fromTemplate('enterprise',   { owner })  // $50k  / 30 days
-```
-
-### Template defaults
 
 | Template | Budget | Auto ≤ | Escalate ≥ | Max/tx | Expiry |
 |----------|--------|--------|------------|--------|--------|
@@ -345,9 +447,37 @@ EdgePass.fromTemplate('enterprise',   { owner })  // $50k  / 30 days
 
 ---
 
+## Events System
+
+Subscribe to transaction outcomes without polling. Chain-able.
+
+```typescript
+sdk
+  .on('approved', ({ outcome, pass, request }) => {
+    updateBudgetUI(pass);
+    auditLog.write(outcome.digest);
+  })
+  .on('escalated', ({ request }) => {
+    slack.notify(`Approve $${request.amount} at ${request.merchant}?`);
+  })
+  .on('blocked', ({ outcome }) => {
+    logger.warn(outcome.reason);
+  });
+
+await sdk.execute(pass, request, signer);
+
+// Cleanup
+sdk.off('approved', handler);
+sdk.removeAllListeners();
+```
+
+Events fire for `approved`, `escalated`, `blocked` only. Infrastructure errors (`status: 'error'`) do not fire events — check `outcome.status === 'error'` explicitly.
+
+---
+
 ## PolicyEngine
 
-Access the policy engine directly for custom validation flows.
+Access the validation engine directly.
 
 ```typescript
 import { PolicyEngine } from '@edge-protocol/sdk';
@@ -355,16 +485,7 @@ import { PolicyEngine } from '@edge-protocol/sdk';
 
 ### `PolicyEngine.validate(pass, request)` → `PolicyValidation`
 
-```typescript
-const validation = PolicyEngine.validate(pass, {
-  merchant: 'Shuttle Express',
-  amount:   18_500_000_000n,
-});
-// validation.allowed · validation.requiresEscalation · validation.reason
-```
-
 **Validation rules (in order):**
-
 1. Pass must be active
 2. Pass must not be expired
 3. Merchant must be in `approvedMerchants`
@@ -373,9 +494,17 @@ const validation = PolicyEngine.validate(pass, {
 6. If amount > `escalateThreshold` → escalate
 7. If amount ≤ `autoThreshold` → auto-approve
 
-### `PolicyEngine.isValid(pass)` → `boolean`
+### `PolicyEngine.simulate(pass, requests[])` → `SimulationResult`
 
+Static version of `sdk.simulate()`.
+
+### `PolicyEngine.isValid(pass)` → `boolean`
 ### `PolicyEngine.remainingBudget(pass)` → `bigint`
+### `PolicyEngine.utilizationPct(pass)` → `number`
+### `PolicyEngine.isNearLimit(pass, threshold?)` → `boolean`
+### `PolicyEngine.budgetStatus(pass, threshold?)` → `BudgetStatus`
+### `PolicyEngine.timeRemaining(pass)` → `number`
+### `PolicyEngine.isExpiringSoon(pass, withinMs?)` → `boolean`
 
 ---
 
@@ -388,9 +517,11 @@ import type {
   TransactionRequest,
   TransactionOutcome,
   PolicyValidation,
+  SimulatedDecision,
+  SimulationResult,
+  BudgetStatus,
   Network,
   EdgeSDKConfig,
-  EdgePassTemplate,
 } from '@edge-protocol/sdk';
 ```
 
@@ -439,7 +570,51 @@ type TransactionOutcome =
   | { status: 'escalated'; reason: string;                    auto: false }
   | { status: 'blocked';   reason: string;                    auto: false }
   | { status: 'error';     reason: string; code?: string;     auto: false };
-  // error = infrastructure failure — transaction NOT submitted to chain
+```
+
+### `SimulationResult`
+
+```typescript
+interface SimulationResult {
+  decisions:       SimulatedDecision[];
+  approved:        SimulatedDecision[];
+  blocked:         SimulatedDecision[];
+  escalated:       SimulatedDecision[];
+  totalSpend:      bigint;
+  remainingBudget: bigint;
+  utilizationPct:  number;
+  summary: {
+    approvedCount:  number;
+    blockedCount:   number;
+    escalatedCount: number;
+    totalDecisions: number;
+  };
+}
+```
+
+### `SimulatedDecision`
+
+```typescript
+interface SimulatedDecision {
+  request:            TransactionRequest;
+  outcome:            'approved' | 'escalated' | 'blocked';
+  reason:             string;
+  projectedSpent:     bigint;
+  projectedRemaining: bigint;
+}
+```
+
+### `BudgetStatus`
+
+```typescript
+interface BudgetStatus {
+  budget:         bigint;
+  spent:          bigint;
+  remaining:      bigint;
+  utilizationPct: number;
+  isNearLimit:    boolean;
+  isExhausted:    boolean;
+}
 ```
 
 ### `PolicyValidation`
@@ -450,18 +625,6 @@ interface PolicyValidation {
   requiresEscalation: boolean;
   reason:             string;
 }
-```
-
-### `Network`
-
-```typescript
-type Network = 'mainnet' | 'testnet' | 'devnet';
-```
-
-### `EdgePassTemplate`
-
-```typescript
-type EdgePassTemplate = 'festival' | 'gaming' | 'subscription' | 'defi' | 'enterprise';
 ```
 
 ---
@@ -482,15 +645,13 @@ import {
 
 ## Integration Examples
 
-### AI Agent with EdgePass
+### AI Agent with Claude
 
 ```typescript
 import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 import Anthropic from '@anthropic-ai/sdk';
 
 const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: KEY });
-const claude = new Anthropic();
-
 const pass = await sdk.create(
   EdgePass.fromTemplate('festival', {
     approvedMerchants: ['Shuttle Express', 'Hydra Bar', 'Stage Access VIP'],
@@ -499,25 +660,29 @@ const pass = await sdk.create(
   signer
 );
 
-async function agentLoop(scenario: string) {
-  const response = await claude.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    messages: [{ role: 'user', content: `Festival scenario: "${scenario}". Return JSON: { merchant: string, amount: number }` }]
-  });
+const claude = new Anthropic();
+const response = await claude.messages.create({
+  model: 'claude-sonnet-4-6',
+  max_tokens: 500,
+  messages: [{ role: 'user', content: 'Plan my festival spending. Return JSON array of { merchant, amount } decisions.' }]
+});
 
-  const { merchant, amount } = JSON.parse(response.content[0].text);
-  const outcome = await sdk.execute(pass, {
-    merchant,
-    amount: BigInt(Math.floor(amount * 1e9)),
-  }, signer);
+const decisions = JSON.parse(response.content[0].text);
 
-  if (outcome.status === 'escalated') await notifyUser(`Approve $${amount} at ${merchant}?`);
-  return outcome;
+// Simulate first — show plan before executing
+const plan = sdk.simulate(pass, decisions.map(d => ({
+  merchant: d.merchant,
+  amount: BigInt(Math.floor(d.amount * 1e9)),
+})));
+
+console.log(`Plan: ${plan.summary.approvedCount} approved, ${plan.summary.blockedCount} blocked`);
+
+// Execute approved decisions
+for (const decision of plan.approved) {
+  const outcome = await sdk.execute(pass, decision.request, signer);
+  console.log(outcome.status, outcome.digest);
 }
 ```
-
----
 
 ### DeFi Trading Agent
 
@@ -540,9 +705,7 @@ async function executeTrade(dex: string, amount: bigint) {
 }
 ```
 
----
-
-### Enterprise Payroll Agent
+### Enterprise Treasury Agent
 
 ```typescript
 const pass = await sdk.create(
@@ -563,52 +726,28 @@ for (const payment of scheduledPayments) {
 
 ---
 
-### Subscription Manager
-
-```typescript
-const pass = await sdk.create(
-  EdgePass.fromTemplate('subscription', {
-    approvedMerchants: ['netflix.sui', 'spotify.sui', 'github.sui'],
-    owner: userAddress,
-  }),
-  signer
-);
-
-async function processRenewals(subscriptions: Subscription[]) {
-  for (const sub of subscriptions) {
-    if (!sdk.isValid(pass)) {
-      pass = await sdk.create(EdgePass.fromTemplate('subscription', { owner: userAddress }), signer);
-    }
-    await sdk.execute(pass, { merchant: sub.merchant, amount: sub.amount }, signer);
-  }
-}
-```
-
----
-
 ## Error Handling
 
 ```typescript
-try {
-  const outcome = await sdk.execute(pass, request, signer);
-  switch (outcome.status) {
-    case 'approved':   break; // outcome.digest is the Sui tx hash
-    case 'escalated':  break; // outcome.reason explains why
-    case 'blocked':    break; // outcome.reason explains why
-  }
-} catch (error) {
-  console.error('SDK error:', error);
+const outcome = await sdk.execute(pass, request, signer);
+
+switch (outcome.status) {
+  case 'approved':   // outcome.digest is the Sui tx hash
+  case 'escalated':  // outcome.reason explains why
+  case 'blocked':    // outcome.reason explains why
+  case 'error':      // infrastructure failure — tx was NOT submitted
+                     // outcome.code for programmatic handling
 }
 ```
 
-### Common reasons
+### Common blocked reasons
 
 | Reason | Cause |
 |--------|-------|
 | `EdgePass is inactive` | Pass was revoked |
-| `EdgePass has expired` | `expiresAt` timestamp passed |
-| `Merchant "X" is not approved` | Merchant not in allowlist |
-| `Insufficient budget` | Remaining budget < amount |
+| `EdgePass has expired` | `expiresAt` passed |
+| `Merchant "X" is not approved` | Not in allowlist |
+| `Insufficient budget` | Remaining < amount |
 | `Amount exceeds per-transaction limit` | Amount > `maxPerTransaction` |
 | `Amount exceeds escalation threshold` | Amount > `escalateThreshold` — escalated not blocked |
 
@@ -629,7 +768,7 @@ Agent calls sdk.execute() — many times, autonomously
          │
          ├─▶ ExecutionEngine.buildPTB()
          │         Programmable Transaction Block
-         │         validate → execute → update spent → emit event
+         │         validate → execute → update spent
          │         atomic — any failure reverts everything
          │
          └─▶ Walrus audit receipt
@@ -638,11 +777,11 @@ Agent calls sdk.execute() — many times, autonomously
 
 ### Why PTBs matter
 
-PTBs are Sui's killer feature. The policy check and the spend update happen in one atomic block. If any step fails, everything reverts. No partial state. No race conditions.
+The policy check and spend update happen in one atomic block. If any step fails, everything reverts. No partial state. No race conditions.
 
 ### Why the object model matters
 
-The EdgePass is a first-class owned object in the user's wallet. An agent executes against it without ever taking ownership. No contract upgrade, no admin key, no reentrancy attack can change that.
+The EdgePass is a first-class owned object in the user's wallet. An agent executes against it without ever taking ownership. No admin key, no contract upgrade can change that.
 
 ---
 
@@ -674,7 +813,7 @@ public entry fun revoke_pass(pass: &mut EdgePass, ctx: &mut TxContext)
 
 ### On-chain enforcement
 
-`execute_transaction` validates every spend at the protocol level before recording it. Five assertions run inside the Move VM — if any fails, the entire transaction reverts:
+Five assertions run inside the Move VM on every spend:
 
 ```move
 assert!(pass.active, EPassInactive);
@@ -684,72 +823,38 @@ assert!(pass.spent + amount <= pass.budget, EBudgetExceeded);
 assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
 ```
 
-This means policy enforcement is not client-side. A compromised agent cannot bypass the contract. The chain is the trust boundary.
-
----
-
-## Competitive Positioning
-
-Edge is the **policy layer** for the agentic economy. It is not a payment rail.
-
-| Solution | Layer | Open Source | Sui Native | 3-line SDK |
-|----------|-------|-------------|------------|------------|
-| **Edge Protocol** | Policy enforcement | ✅ | ✅ | ✅ |
-| x402 (Coinbase) | Payment rail | ✅ | ❌ | ❌ |
-| ERC-4337 | Account abstraction | ✅ | ❌ EVM only | ❌ |
-| Trust Wallet Agent Kit | Wallet interactions | ✅ | Partial | ❌ |
-| Cobo Agentic Wallet | Custody | ❌ Enterprise | ❌ | ❌ |
-| Nevermined | Metering + monetization | Partial | ❌ | ❌ |
-| Skyfire | Identity + settlement | ❌ | ❌ | ❌ |
-
-**Edge complements x402, it does not compete with it.**
-
-x402 answers: *how does money move from agent to merchant?*
-Edge answers: *should this agent be allowed to spend this money at all?*
-
-Together they form a complete stack:
-
-```
-Edge (policy layer)  →  x402 (payment rail)  →  Settlement
-"is this allowed?"       "move the money"
-```
+A compromised agent cannot bypass the contract. The chain is the trust boundary.
 
 ---
 
 ## Security Model
 
-Edge has two enforcement layers:
+### Layer 1 — TypeScript PolicyEngine
 
-### Layer 1 — TypeScript PolicyEngine (pre-flight)
+Fast, zero network calls, under 1ms. Can be bypassed by a compromised agent runtime. Treat as a UX convenience — not a security boundary.
 
-Fast, zero network calls, under 1ms. Can be bypassed by a compromised agent runtime. Treat as a UX convenience and performance optimization — not a security boundary.
+### Layer 2 — Sui Move Contract
 
-### Layer 2 — Sui Move Contract (source of truth)
-
-On-chain enforcement by the Sui VM. Cannot be bypassed. The EdgePass object validates budget, expiry, and merchant allowlist independently at the protocol level.
-
-**For production deployments:** Always execute via the Move contract. The TypeScript layer is a preview — the chain is the guarantee.
-
-### The Two-Layer Pattern
+On-chain enforcement by the Sui VM. Cannot be bypassed.
 
 ```
 sdk.validate()  →  TypeScript (instant preview, saves gas on rejections)
 sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof, final)
 ```
 
-### Production Guidelines
+### Production guidelines
 
-- Fetch EdgePass state from chain before executing — never trust locally cached config
-- Use on-chain clock (Sui Clock `0x6`) for expiry verification in high-security deployments
+- Always execute via the Move contract — the TypeScript layer is a preview
 - Use verified Sui addresses in `approvedMerchants` rather than display name strings
 - Keep ephemeral zkLogin keys in memory only — never persist to localStorage
+- Fetch EdgePass state from chain before critical operations
 
-### Known V2 Security Improvements
+### Known V2 security improvements
 
 - Rolling time windows — `maxTransactionsPerHour`
-- On-chain policy signatures — cryptographic commitment prevents client-side tampering
-- Merchant address verification — verified Sui addresses on-chain
-- Rate limiting — prevent rapid budget drain attacks
+- On-chain policy signatures
+- Merchant address verification on-chain
+- Rate limiting to prevent rapid budget drain
 
 ---
 
@@ -760,64 +865,19 @@ cd packages/sdk && pnpm test
 ```
 
 ```
-📋 PolicyEngine.validate()
-  ✓ auto-approves under $50
-  ✓ auto-approves at exactly $50
-  ✓ escalates above $100
-  ✓ escalates at exactly $101
-  ✓ blocks unlisted merchant
-  ✓ blocks when budget exceeded
-  ✓ blocks when expired
-  ✓ blocks when inactive
-  ✓ blocks when maxPerTransaction exceeded
-  ✓ allows when maxPerTransaction is undefined
-
-📋 PolicyEngine helpers
-  ✓ isValid returns true for active pass
-  ✓ isValid returns false for expired pass
-  ✓ isValid returns false for inactive pass
-  ✓ remainingBudget calculates correctly
-  ✓ remainingBudget returns full budget when nothing spent
-
-📋 EdgePass.fromTemplate()
-  ✓ festival template has correct defaults
-  ✓ gaming template has correct expiry
-  ✓ defi template has correct budget
-  ✓ enterprise template has correct budget
-  ✓ fromTemplate allows budget override
-  ✓ fromTemplate allows merchant override
-  ✓ fromTemplate preserves owner
-
-📋 Constants
-  ✓ MIST_PER_SUI is 1_000_000_000
-  ✓ all 5 templates exist
-  ✓ all templates have required fields
-  ✓ all templates have autoThreshold < escalateThreshold
-  ✓ all templates have escalateThreshold < budget
-
-📋 Events system
-  ✓ on() returns sdk instance for chaining
-  ✓ fires approved event on auto-approve
-  ✓ fires blocked event on policy rejection
-  ✓ fires escalated event above threshold
-  ✓ off() removes listener
-  ✓ removeAllListeners() clears all events
-  ✓ multiple listeners fire for same event
+📋 PolicyEngine.validate()     10 tests ✓
+📋 PolicyEngine helpers         5 tests ✓
+📋 EdgePass.fromTemplate()      7 tests ✓
+📋 Constants                    5 tests ✓
+📋 Events system                7 tests ✓
 
 34 passed · 0 failed ✅
 ```
 
 ---
 
-## Links
-
-- **npm:** [npmjs.com/package/@edge-protocol/sdk](https://npmjs.com/package/@edge-protocol/sdk)
-- **GitHub:** [github.com/fluturecode/edge](https://github.com/fluturecode/edge)
-- **Live Demo:** [edge-web-cyan.vercel.app](https://edge-web-cyan.vercel.app)
-- **Contract on Mainnet:** [suiscan.xyz/mainnet/object/0x2ad62ac...](https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde)
-
----
-
 *The best infrastructure is invisible.*
 
-Built for [Sui Overflow 2026](https://overflow.sui.io) · MIT License
+Built for Sui Overflow 2026 · MIT License
+
+[npm](https://npmjs.com/package/@edge-protocol/sdk) · [GitHub](https://github.com/fluturecode/edge) · [Live Demo](https://edge-web-cyan.vercel.app)
