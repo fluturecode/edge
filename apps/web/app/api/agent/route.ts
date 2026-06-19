@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const ANTHROPIC_MODELS = [
-  'claude-sonnet-4-6',
-  'claude-opus-4-6',
-  'claude-haiku-4-5-20251001',
-];
-
 const GEMINI_MODELS = [
   'gemini-1.5-pro',
   'gemini-1.5-flash',
@@ -34,9 +28,7 @@ async function callAnthropic(model: string, system: string, message: string) {
     throw new Error(err);
   }
 
-  const data = await response.json();
-  // Return in Anthropic format
-  return data;
+  return response.json();
 }
 
 async function callGemini(model: string, system: string, message: string) {
@@ -46,16 +38,9 @@ async function callGemini(model: string, system: string, message: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: system }],
-      },
-      contents: [
-        { role: 'user', parts: [{ text: message }] }
-      ],
-      generationConfig: {
-        maxOutputTokens: 1000,
-        temperature: 0.7,
-      },
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: message }] }],
+      generationConfig: { maxOutputTokens: 1000, temperature: 0.7 },
     }),
   });
 
@@ -66,8 +51,6 @@ async function callGemini(model: string, system: string, message: string) {
   }
 
   const data = await response.json();
-
-  // Normalize Gemini response to Anthropic format so frontend works the same
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   return {
     content: [{ type: 'text', text }],
@@ -76,20 +59,55 @@ async function callGemini(model: string, system: string, message: string) {
   };
 }
 
+// Streaming endpoint — returns decisions one at a time as newline-delimited JSON
 export async function POST(req: NextRequest) {
   try {
-    const { system, message, model = 'claude-sonnet-4-6' } = await req.json();
-    console.log('Agent route called:', { model, hasAnthropic: !!process.env.ANTHROPIC_API_KEY, hasGoogle: !!process.env.GOOGLE_API_KEY });
+    const { system, message, model = 'claude-sonnet-4-6', stream = false } = await req.json();
+    console.log('Agent route called:', { model, stream, hasAnthropic: !!process.env.ANTHROPIC_API_KEY, hasGoogle: !!process.env.GOOGLE_API_KEY });
 
-    let data;
-
-    if (GEMINI_MODELS.includes(model)) {
-      data = await callGemini(model, system, message);
-    } else {
-      data = await callAnthropic(model, system, message);
+    // Non-streaming path (fallback)
+    if (!stream) {
+      const data = GEMINI_MODELS.includes(model)
+        ? await callGemini(model, system, message)
+        : await callAnthropic(model, system, message);
+      return NextResponse.json(data);
     }
 
-    return NextResponse.json(data);
+    // Streaming path — fetch all decisions then stream them one by one
+    const data = GEMINI_MODELS.includes(model)
+      ? await callGemini(model, system, message)
+      : await callAnthropic(model, system, message);
+
+    const text = data.content?.[0]?.text || '';
+    const clean = text.replace(/```json|```/g, '').trim();
+
+    let decisions: any[] = [];
+    try {
+      decisions = JSON.parse(clean);
+    } catch (e) {
+      return NextResponse.json({ error: 'Failed to parse decisions' }, { status: 500 });
+    }
+
+    // Stream each decision with a small delay so the UI can render progressively
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        for (const decision of decisions) {
+          controller.enqueue(encoder.encode(JSON.stringify(decision) + '\n'));
+          // Small delay between decisions so UI can render each one
+          await new Promise(r => setTimeout(r, 100));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+        'X-Accel-Buffering': 'no',
+      },
+    });
 
   } catch (e) {
     console.error('Agent route failed:', e);
