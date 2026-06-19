@@ -7,6 +7,9 @@ export type {
   TransactionRequest,
   TransactionOutcome,
   PolicyValidation,
+  SimulatedDecision,
+  SimulationResult,
+  BudgetStatus,
   Network,
   EdgeSDKConfig,
 } from './utils/types';
