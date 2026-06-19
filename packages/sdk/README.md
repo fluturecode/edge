@@ -30,6 +30,8 @@ const outcome = await sdk.execute(pass, { merchant: 'Hydra Bar', amount: 32n * M
 console.log(outcome.status); // 'approved' | 'escalated' | 'blocked'
 ```
 
+> **Note:** BigInt literal syntax (`32n`) requires TypeScript targeting ES2020+. For ES2019 apps use `BigInt(32) * MIST_PER_SUI` instead.
+
 ---
 
 ## 🛠 The 5-Dimensional Trust Primitive
@@ -361,6 +363,8 @@ React hook (requires React 18+):
 ```bash
 import { useEdgePass } from '@edge-protocol/sdk/react';
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
