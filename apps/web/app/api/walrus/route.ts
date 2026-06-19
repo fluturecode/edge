@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLISHERS = [
+  "https://walrus-mainnet-publisher.nami.cloud/GfYcdOZbB7wLdVPdbUAd",
   "https://walrus-mainnet-publisher-1.staketab.org:443",
-  "https://walrus-mainnet.brightlystake.com",
 ];
 
 async function tryPublisher(publisher: string, data: string) {
@@ -10,7 +10,7 @@ async function tryPublisher(publisher: string, data: string) {
     method: "PUT",
     headers: { "Content-Type": "application/octet-stream" },
     body: data,
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`${publisher} returned ${res.status}`);
   return res.json();
