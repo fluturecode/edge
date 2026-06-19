@@ -95,6 +95,9 @@ importers:
       '@mysten/zklogin':
         specifier: ^0.8.1
         version: 0.8.1(typescript@5.9.3)
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.4
     devDependencies:
       '@types/node':
         specifier: ^20.19.41
