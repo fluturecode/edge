@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const err = await response.text();
+      console.error('Anthropic error:', err); 
       return NextResponse.json({ error: err }, { status: 400 });
     }
 
