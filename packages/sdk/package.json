@@ -1,6 +1,6 @@
 {
   "name": "@edge-protocol/sdk",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Programmable trust infrastructure for autonomous AI agents on Sui. Give agents your rules, not your keys.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
