@@ -445,11 +445,13 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       runQueue(); // start queue processor if not already running
     };
 
-    // Stream decisions from Claude — each one processed immediately as it arrives
+    // Stream decisions from Claude — fire processDecision without awaiting
+    // so UI updates appear immediately as each decision arrives
+    // Approved decisions queue sequentially, blocked/escalated show instantly
     try {
-      await fetchDecisionsStreaming(async (decision) => {
+      await fetchDecisionsStreaming((decision) => {
         setLoadingDecisions(false);
-        await processDecision(decision);
+        processDecision(decision); // intentionally not awaited — decisions process concurrently
       });
     } catch (e) {
       console.error('Streaming failed, falling back:', e);
@@ -457,13 +459,15 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
       for (const decision of FALLBACK_DECISIONS) {
         if (stopRef.current) break;
-        await processDecision(decision);
+        processDecision(decision); // intentionally not awaited
+        await new Promise(r => setTimeout(r, 800)); // small gap between fallback decisions
       }
     }
 
     setLoadingDecisions(false);
 
-    // Wait for execution queue to drain
+    // Wait for execution queue to fully drain before showing receipt
+    await new Promise(r => setTimeout(r, 500));
     while (isExecuting || executionQueue.length > 0) {
       await new Promise(r => setTimeout(r, 300));
     }
