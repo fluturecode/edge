@@ -13,8 +13,16 @@ const T = {
   gold: '#FFB830', goldDim: 'rgba(255,184,48,0.08)',
   red: '#FF4D6A', redDim: 'rgba(255,77,106,0.08)',
   purple: '#A78BFA', purpleDim: 'rgba(167,139,250,0.08)', purpleBorder: 'rgba(167,139,250,0.2)',
+  green: '#34D399', greenDim: 'rgba(52,211,153,0.08)', greenBorder: 'rgba(52,211,153,0.2)',
   white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
+
+const AVAILABLE_MODELS = [
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', provider: 'anthropic', description: 'Fast · Recommended', color: 'purple' },
+  { id: 'claude-opus-4-6', label: 'Claude Opus', provider: 'anthropic', description: 'Most capable', color: 'purple' },
+  { id: 'gemini-1.5-flash', label: 'Gemini Flash', provider: 'google', description: 'Google · Fast', color: 'green' },
+  { id: 'gemini-1.5-pro', label: 'Gemini Pro', provider: 'google', description: 'Google · Capable', color: 'green' },
+];
 
 const SCENARIOS = {
   festival: {
@@ -50,6 +58,8 @@ interface AgentMessage {
   amount?: number;
   status?: 'approved' | 'blocked' | 'escalated';
   digest?: string;
+  model?: string;
+  provider?: string;
 }
 
 interface AgentDecision {
@@ -62,6 +72,7 @@ interface AgentDecision {
 export default function AgentPage() {
   const router = useRouter();
   const [scenario, setScenario] = useState<'festival' | 'defi'>('festival');
+  const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
@@ -78,6 +89,10 @@ export default function AgentPage() {
   const BUDGET = config.budget;
   const AUTO_THRESHOLD = config.autoThreshold;
   const ESCALATE_THRESHOLD = config.escalateThreshold;
+  const modelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel) || AVAILABLE_MODELS[0];
+  const modelColor = modelInfo.color === 'green' ? T.green : T.purple;
+  const modelColorDim = modelInfo.color === 'green' ? T.greenDim : T.purpleDim;
+  const modelColorBorder = modelInfo.color === 'green' ? T.greenBorder : T.purpleBorder;
 
   useEffect(() => {
     if (logRef.current) {
@@ -123,6 +138,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
       body: JSON.stringify({
         system: systemPrompt,
         message: 'Generate my spending decisions for this session.',
+        model: selectedModel,
       }),
     });
 
@@ -158,18 +174,17 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     await new Promise(r => setTimeout(r, 600));
     addMessage({ type: 'system', text: `Policy loaded. Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
     await new Promise(r => setTimeout(r, 400));
-    addMessage({ type: 'system', text: 'Consulting Claude for autonomous decisions...' });
-      addMessage({ type: 'system', text: 'Model: claude-sonnet-4-6 · Anthropic API · live inference' });
+    addMessage({ type: 'system', text: `Consulting ${modelInfo.label} (${modelInfo.provider}) for autonomous decisions...` });
 
     setLoadingDecisions(true);
     let decisions: AgentDecision[] = [];
 
     try {
       decisions = await fetchDecisionsFromClaude();
-      addMessage({ type: 'system', text: `Claude generated ${decisions.length} decisions. Beginning execution...` });
+      addMessage({ type: 'system', text: `${modelInfo.label} generated ${decisions.length} decisions. Beginning execution...` });
     } catch (e) {
-      console.error('Claude decisions failed:', e);
-      addMessage({ type: 'system', text: 'Claude API unavailable — using fallback decisions.' });
+      console.error('AI decisions failed:', e);
+      addMessage({ type: 'system', text: `${modelInfo.label} unavailable — using fallback decisions.` });
       decisions = scenario === 'festival' ? [
         { thinking: 'Need transport to the main stage. Shuttle Express is approved and $45 is under the auto-approve threshold.', merchant: 'Shuttle Express', amount: 45.00, reasoning: 'Transport to main stage — within auto-approve limits.' },
         { thinking: 'Getting hungry. Festival Kitchen is approved and $38 for food is reasonable.', merchant: 'Festival Kitchen', amount: 38.00, reasoning: 'Grabbing food — well within policy limits.' },
@@ -201,7 +216,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
       const step = decisions[i];
 
-      addMessage({ type: 'thinking', text: step.thinking });
+      addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
       await new Promise(r => setTimeout(r, 1200));
 
       addMessage({
@@ -299,7 +314,6 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
     setDone(true);
     setRunning(false);
 
-    // Write audit log to Walrus
     if (outcomesRef.current.length > 0) {
       setWalrusLoading(true);
       const blobId = await writeAuditLogs(outcomesRef.current, passId);
@@ -342,31 +356,75 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
           <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: T.grey2, fontSize: 12, cursor: 'pointer', fontFamily: 'DM Mono, monospace', marginBottom: 12, padding: 0, display: 'block' }}>back</button>
 
           {!running && !done && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              {(Object.keys(SCENARIOS) as Array<'festival' | 'defi'>).map(s => (
-                <button key={s} onClick={() => setScenario(s)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11,
-                    fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', transition: 'all 0.15s',
-                    border: '1px solid ' + (scenario === s ? T.teal : T.border),
-                    background: scenario === s ? T.tealDim : T.bgCard,
-                    color: scenario === s ? T.teal : T.grey2,
-                  }}>
-                  {SCENARIOS[s].label.toUpperCase()}
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+
+              {/* Scenario switcher */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(Object.keys(SCENARIOS) as Array<'festival' | 'defi'>).map(s => (
+                  <button key={s} onClick={() => setScenario(s)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 11,
+                      fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', transition: 'all 0.15s',
+                      border: '1px solid ' + (scenario === s ? T.teal : T.border),
+                      background: scenario === s ? T.tealDim : T.bgCard,
+                      color: scenario === s ? T.teal : T.grey2,
+                    }}>
+                    {SCENARIOS[s].label.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {/* Model switcher */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>AI MODEL:</span>
+                {AVAILABLE_MODELS.map(m => {
+                  const isSelected = selectedModel === m.id;
+                  const btnColor = m.color === 'green' ? T.green : T.purple;
+                  const btnDim = m.color === 'green' ? T.greenDim : T.purpleDim;
+                  return (
+                    <button key={m.id} onClick={() => setSelectedModel(m.id)}
+                      title={m.description}
+                      style={{
+                        padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 10,
+                        fontFamily: 'DM Mono, monospace', letterSpacing: '0.04em', transition: 'all 0.15s',
+                        border: '1px solid ' + (isSelected ? btnColor : T.border),
+                        background: isSelected ? btnDim : T.bgCard,
+                        color: isSelected ? btnColor : T.grey2,
+                      }}>
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <span style={{ background: T.purpleDim, border: '1px solid ' + T.purpleBorder, color: T.purple, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>CLAUDE AGENT</span>
+          {/* Badges */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <span style={{
+              background: modelColorDim, border: '1px solid ' + modelColorBorder,
+              color: modelColor, fontSize: 10, fontFamily: 'DM Mono, monospace',
+              letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6
+            }}>
+              {modelInfo.label.toUpperCase()}
+            </span>
+            <span style={{
+              background: modelInfo.provider === 'google' ? T.greenDim : T.purpleDim,
+              border: '1px solid ' + (modelInfo.provider === 'google' ? T.greenBorder : T.purpleBorder),
+              color: modelInfo.provider === 'google' ? T.green : T.purple,
+              fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6
+            }}>
+              {modelInfo.provider === 'google' ? 'GOOGLE AI' : 'ANTHROPIC'}
+            </span>
             <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>MAINNET</span>
+            <span style={{ background: T.blueDim, border: '1px solid ' + T.blueBorder, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>LIVE INFERENCE</span>
           </div>
+
           <h1 style={{ fontFamily: 'DM Mono, monospace', fontSize: 'clamp(18px, 3vw, 22px)', color: T.white, fontWeight: 700, margin: '0 0 6px' }}>Edge Agent</h1>
           <p style={{ color: T.grey2, fontSize: 13, margin: 0, fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
             {scenario === 'festival'
-              ? 'Claude autonomously decides what to buy at the festival. Every decision executes against your EdgePass policy on-chain. No wallet interruptions.'
-              : 'Claude autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain. No wallet interruptions.'}
+              ? `${modelInfo.label} autonomously decides what to buy at the festival. Every decision executes against your EdgePass policy on-chain. No wallet interruptions.`
+              : `${modelInfo.label} autonomously manages DeFi positions on Sui. Every trade executes against your EdgePass policy on-chain. No wallet interruptions.`}
           </p>
         </div>
 
@@ -399,9 +457,9 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
             <span style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Mono, monospace' }}>Agent Log</span>
             {running && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingDecisions ? T.gold : T.purple, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: loadingDecisions ? T.gold : T.purple, fontFamily: 'DM Mono, monospace' }}>
-                  {loadingDecisions ? 'consulting claude...' : 'agent running'}
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingDecisions ? T.gold : modelColor, animation: 'pulse 0.8s ease-in-out infinite', display: 'inline-block' }} />
+                <span style={{ fontSize: 11, color: loadingDecisions ? T.gold : modelColor, fontFamily: 'DM Mono, monospace' }}>
+                  {loadingDecisions ? `consulting ${modelInfo.label.toLowerCase()}...` : 'agent running'}
                 </span>
               </div>
             )}
@@ -412,8 +470,8 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
               <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, color: T.grey2, marginBottom: 8 }}>agent standing by_</div>
               <div style={{ fontSize: 12, color: T.grey2, fontFamily: 'Inter, sans-serif' }}>
                 {scenario === 'festival'
-                  ? 'Claude will autonomously decide what to buy at the festival'
-                  : 'Claude will autonomously manage your DeFi positions'}
+                  ? `${modelInfo.label} will autonomously decide what to buy at the festival`
+                  : `${modelInfo.label} will autonomously manage your DeFi positions`}
               </div>
             </div>
           )}
@@ -425,8 +483,11 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.grey2 }}>{'> '}{msg.text}</div>
                 )}
                 {msg.type === 'thinking' && (
-                  <div style={{ background: T.purpleDim, border: '1px solid ' + T.purpleBorder, borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: T.purple, fontFamily: 'DM Mono, monospace', marginBottom: 4, letterSpacing: '0.06em' }}>CLAUDE THINKING</div>
+                  <div style={{ background: modelColorDim, border: '1px solid ' + modelColorBorder, borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <div style={{ fontSize: 10, color: modelColor, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>THINKING</div>
+                      <div style={{ fontSize: 9, color: modelColor, fontFamily: 'DM Mono, monospace', opacity: 0.7 }}>{msg.model}</div>
+                    </div>
                     <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif', fontStyle: 'italic' }}>{msg.text}</div>
                   </div>
                 )}
@@ -476,12 +537,12 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
               </div>
             ))}
             {running && (
-              <span style={{ display: 'inline-block', width: 8, height: 14, background: T.purple, verticalAlign: 'middle', animation: 'blink 1s step-end infinite', marginTop: 4 }} />
+              <span style={{ display: 'inline-block', width: 8, height: 14, background: modelColor, verticalAlign: 'middle', animation: 'blink 1s step-end infinite', marginTop: 4 }} />
             )}
           </div>
         </div>
 
-        {/* Walrus Audit Log — appears after completion */}
+        {/* Walrus Audit Log */}
         {done && (
           <div style={{ padding: 16, borderRadius: 12, background: T.bgCard, border: '1px solid ' + T.border, marginBottom: 14, animation: 'fadeUp 0.4s ease-out' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -507,7 +568,8 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
 
         <div style={{ display: 'grid', gridTemplateColumns: done ? '1fr 1fr' : '1fr', gap: 10 }}>
           {!running && !done && (
-            <button onClick={runAgent} style={{ padding: 14, borderRadius: 12, border: 'none', background: T.purple, color: T.white, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'opacity 0.2s' }}
+            <button onClick={runAgent}
+              style={{ padding: 14, borderRadius: 12, border: 'none', background: modelColor, color: T.bg, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'opacity 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
               Run Agent
@@ -533,7 +595,7 @@ Respond ONLY with a valid JSON array, no markdown, no explanation:
         </div>
 
         <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, marginTop: 12, fontFamily: 'DM Mono, monospace' }}>
-          powered by Claude · policy enforced on-chain · zero wallet interruptions
+          powered by {modelInfo.label} · {modelInfo.provider} · policy enforced on-chain · zero wallet interruptions
         </p>
 
       </div>
