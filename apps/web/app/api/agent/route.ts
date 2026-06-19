@@ -25,175 +25,85 @@ async function callGemini(model: string, system: string, message: string) {
   return { content: [{ type: 'text', text }], model, provider: 'google' };
 }
 
-/**
- * Extract complete JSON objects from streaming text using brace counting.
- * Correctly handles strings containing braces, escape sequences, and partial objects.
- * Returns complete objects found so far and the remaining unparsed tail.
- */
-function extractCompleteObjects(text: string): { objects: any[]; remaining: string } {
-  const objects: any[] = [];
-  let i = 0;
+async function callAnthropic(model: string, system: string, message: string) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1000,
+      system,
+      messages: [{ role: 'user', content: message }],
+    }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '';
+  return { content: [{ type: 'text', text }], model, provider: 'anthropic' };
+}
 
-  while (i < text.length) {
-    const start = text.indexOf('{', i);
-    if (start === -1) break;
+function parseDecisions(text: string): any[] {
+  const clean = text.replace(/```json|```/g, '').trim();
 
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-    let j = start;
+  // Try JSON array first
+  try {
+    const arr = JSON.parse(clean);
+    if (Array.isArray(arr)) return arr;
+  } catch {}
 
-    while (j < text.length) {
-      const ch = text[j];
-      if (escape) {
-        escape = false;
-      } else if (ch === '\\' && inString) {
-        escape = true;
-      } else if (ch === '"') {
-        inString = !inString;
-      } else if (!inString) {
-        if (ch === '{') depth++;
-        else if (ch === '}') {
-          depth--;
-          if (depth === 0) {
-            try {
-              const obj = JSON.parse(text.slice(start, j + 1));
-              if (obj.thinking && obj.merchant && obj.amount !== undefined && obj.reasoning) {
-                objects.push(obj);
-              }
-            } catch {}
-            i = j + 1;
-            break;
-          }
-        }
+  // Try newline-delimited objects
+  const decisions: any[] = [];
+  for (const line of clean.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj.thinking && obj.merchant && obj.amount !== undefined && obj.reasoning) {
+        decisions.push(obj);
       }
-      j++;
-    }
-
-    if (depth > 0) break;
+    } catch {}
   }
 
-  return { objects, remaining: text.slice(i) };
+  return decisions;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { system, message, model = 'claude-sonnet-4-6', stream = false } = await req.json();
+    const isGemini = GEMINI_MODELS.includes(model);
 
-    // Gemini — collect full response then stream decisions one by one
-    if (GEMINI_MODELS.includes(model)) {
-      const data = await callGemini(model, system, message);
-      if (!stream) return NextResponse.json(data);
-
-      const text = data.content?.[0]?.text || '';
-      const clean = text.replace(/```json|```/g, '').trim();
-      let decisions: any[] = [];
-      try { decisions = JSON.parse(clean); } catch {
-        return NextResponse.json({ error: 'Parse failed' }, { status: 500 });
-      }
-
-      const encoder = new TextEncoder();
-      const readable = new ReadableStream({
-        async start(controller) {
-          for (const decision of decisions) {
-            controller.enqueue(encoder.encode(JSON.stringify(decision) + '\n'));
-            await new Promise(r => setTimeout(r, 50));
-          }
-          controller.close();
-        },
-      });
-      return new Response(readable, {
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'X-Accel-Buffering': 'no',
-          'Cache-Control': 'no-cache, no-transform',
-        },
-      });
-    }
-
-    // Non-streaming Anthropic path
+    // Non-streaming path
     if (!stream) {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 1000,
-          system,
-          messages: [{ role: 'user', content: message }],
-        }),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      return NextResponse.json(await response.json());
+      const data = isGemini
+        ? await callGemini(model, system, message)
+        : await callAnthropic(model, system, message);
+      return NextResponse.json(data);
     }
 
-    // Streaming Anthropic path — edge runtime ensures no buffering
-    // Brace-counting parser emits each decision the moment Claude completes it
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1000,
-        stream: true,
-        system,
-        messages: [{ role: 'user', content: message }],
-      }),
-    });
+    // Streaming path — identical for Claude and Gemini:
+    // Get full response, parse decisions, stream with 120ms delay between each.
+    // This matches Gemini's smooth UX for Claude — cards fire progressively.
+    const data = isGemini
+      ? await callGemini(model, system, message)
+      : await callAnthropic(model, system, message);
 
-    if (!claudeResponse.ok) throw new Error(await claudeResponse.text());
+    const decisions = parseDecisions(data.content?.[0]?.text || '');
+
+    if (decisions.length === 0) {
+      return NextResponse.json({ error: 'No decisions parsed' }, { status: 500 });
+    }
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
-        const reader = claudeResponse.body!.getReader();
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-        let jsonBuffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split('\n');
-          sseBuffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-
-            try {
-              const event = JSON.parse(data);
-              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                jsonBuffer += event.delta.text;
-                const { objects, remaining } = extractCompleteObjects(jsonBuffer);
-                jsonBuffer = remaining;
-                for (const obj of objects) {
-                  controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
-                }
-              }
-            } catch {}
-          }
+        for (const decision of decisions) {
+          controller.enqueue(encoder.encode(JSON.stringify(decision) + '\n'));
+          await new Promise(r => setTimeout(r, 120));
         }
-
-        // Final pass
-        if (jsonBuffer.trim()) {
-          const { objects } = extractCompleteObjects(jsonBuffer);
-          for (const obj of objects) {
-            controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
-          }
-        }
-
         controller.close();
       },
     });
