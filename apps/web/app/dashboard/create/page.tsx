@@ -14,7 +14,7 @@ const T = {
 };
 
 const ALL_MERCHANTS = ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'];
-const PACKAGE_ID = '0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d';
+const PACKAGE_ID = '0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde';
 const EXPIRY_OPTIONS = [24, 48, 72, 168];
 
 export default function CreatePass() {
@@ -44,7 +44,7 @@ export default function CreatePass() {
   const logSteps = [
     { prefix: '$', color: T.grey2, text: 'edge create-pass --network mainnet', delay: 0 },
     { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
-    { prefix: '✓', color: T.teal, text: 'Enoki sponsorship confirmed · gas covered', delay: 800 },
+    { prefix: '✓', color: T.teal, text: 'zkLogin signer ready · direct execution', delay: 800 },
     { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
     { prefix: '→', color: T.blue, text: 'navis::edge_pass::create_pass', delay: 1600, indent: true },
     { prefix: '→', color: T.grey2, text: 'budget: ' + (budgetNum * 1_000_000_000) + ' MIST', delay: 1850, indent: true },
