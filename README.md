@@ -74,25 +74,24 @@ const outcome = await sdk.execute(pass, { merchant, amount }, signer);
 
 ## 🤖 Live AI Agent Demo
 
-The real proof: Claude autonomously manages festival purchases within an EdgePass.
+The real proof: an AI agent autonomously manages festival purchases within an EdgePass. Claude and Gemini both supported — model agnostic by design.
 
 ```
-🧠 Claude:        "Shuttle from parking — $18.50 at Shuttle Express"
-⚙️  PolicyEngine:  ✅ auto-approved · under $50 threshold · trusted merchant
-⛓  Sui:           execute_transaction · Success
+🧠 Agent:         "Shuttle from parking — $18.50 at Shuttle Express"
+⚙️  PolicyEngine:  ✅ auto-approved · under $75 threshold · trusted merchant
+⛓  Sui:           execute_transaction · Success · digest verifiable on Suiscan
 
-🧠 Claude:        "Drinks for the group — $32 at Hydra Bar"
+🧠 Agent:         "Drinks for the group — $45 at Hydra Bar"
 ⚙️  PolicyEngine:  ✅ auto-approved · within policy limits
 ⛓  Sui:           execute_transaction · Success
 
-🧠 Claude:        "VIP artist meet & greet — $220"
-⚙️  PolicyEngine:  ⚠️  escalated · exceeds $150 threshold
-👤 User:          approves via modal
+🧠 Agent:         "VIP stage access — $220"
+⚙️  PolicyEngine:  ⚠️  escalated · exceeds $150 threshold · agent paused
+👤 User:          reviews and approves via modal
 ⛓  Sui:           execute_transaction · Success
 
-🧠 Claude:        "ShadyTokens.xyz — quick flip"
-⚙️  PolicyEngine:  🚫 blocked · merchant not in approved list
-⛓  Sui:           never submitted
+🧠 Agent:         "ShadyTokens.xyz — quick flip"
+⚙️  PolicyEngine:  🚫 blocked · merchant not in approved list · <1ms · never submitted
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 4 transactions executed autonomously
@@ -100,8 +99,6 @@ $188.50 spent · $311.50 remaining
 0 wallet interruptions · every action verified on Suiscan
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
-Every decision cryptographically verified on-chain. Every receipt immutably stored on Walrus.
 
 ---
 
@@ -113,6 +110,8 @@ pnpm add @edge-protocol/sdk
 yarn add @edge-protocol/sdk
 ```
 
+> **Note:** BigInt literal syntax (`32n`) requires TypeScript targeting ES2020+. For ES2019 apps use `BigInt(32) * MIST_PER_SUI`.
+
 ### Create a trust boundary
 
 ```typescript
@@ -120,7 +119,6 @@ import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 
 const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: 'YOUR_KEY' });
 
-// From a template — sensible defaults for common use cases
 const pass = await sdk.create(
   EdgePass.fromTemplate('festival', {
     approvedMerchants: ['Shuttle Express', 'Hydra Bar', 'Stage Access VIP'],
@@ -129,8 +127,6 @@ const pass = await sdk.create(
   signer
 );
 ```
-
-> **Note:** BigInt literal syntax (`32n`) requires TypeScript targeting ES2020+. For ES2019 apps use `BigInt(32) * MIST_PER_SUI`.
 
 ### Execute autonomously
 
@@ -150,10 +146,15 @@ switch (outcome.status) {
 ### Simulate before executing
 
 ```typescript
-// Zero network calls — instant plan for the full session
+// Zero network calls — predict the full session instantly
 const plan = sdk.simulate(pass, decisions);
 console.log(plan.summary);
 // { approvedCount: 4, blockedCount: 1, escalatedCount: 1 }
+
+// Show plan, then execute approved decisions
+for (const decision of plan.approved) {
+  await sdk.execute(pass, decision.request, signer);
+}
 ```
 
 ### Budget intelligence
@@ -167,6 +168,16 @@ sdk.timeRemaining(pass)    // ms until expiry
 sdk.isExpiringSoon(pass)   // true if < 1 hour remaining
 ```
 
+### Wrap any AI tool with policy enforcement
+
+```typescript
+const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (request) => {
+  return await processPayment(request);
+});
+// blocked/escalated never reach your tool logic
+const { outcome, result } = await safePurchase({ merchant, amount });
+```
+
 ### React hook
 
 ```typescript
@@ -174,6 +185,7 @@ import { useEdgePass } from '@edge-protocol/sdk/react';
 
 const { pass, execute, simulate, budgetStatus, loading } = useEdgePass({
   passId, network: 'mainnet', enokiApiKey: KEY, signer,
+  autoRefresh: true, // re-fetch after every approved execute
 });
 ```
 
@@ -206,20 +218,48 @@ User creates EdgePass (once)
          ▼
 Agent calls sdk.execute() — many times, autonomously
          │
-         ├─▶ 🔍 PolicyEngine.validate()
+         ├─▶ 🔍 Layer 1 — TypeScript PolicyEngine
          │         Pure TypeScript · no network · <1ms
          │         ├─ active? expired? merchant in allowlist?
          │         ├─ amount within budget? below maxPerTx?
-         │         ├─ amount > escalateThreshold? → ⚠️  escalate
+         │         ├─ amount > escalateThreshold? → ⚠️  escalate (agent pauses)
          │         └─ amount ≤ autoThreshold?     → ✅ auto-approve
+         │         blocked/escalated NEVER touch the chain
          │
-         ├─▶ ⚡ ExecutionEngine — PTB (atomic)
+         ├─▶ ⚡ Layer 2 — Sui Move Contract (PTB, atomic)
          │         validate → execute → update spent → emit event
-         │         if any step fails → everything reverts · no partial state
+         │         if any assertion fails → everything reverts · no partial state
+         │         cannot be bypassed · the chain is the source of truth
          │
          └─▶ 🗂 Walrus — immutable audit receipt
                    cryptographically committed · decentralized · permanent
 ```
+
+### The Two-Layer Security Model
+
+This is Edge's most important architectural decision:
+
+```
+Layer 1 — TypeScript PolicyEngine    <1ms · zero network · developer convenience
+Layer 2 — Sui Move Contract          atomic · tamper-proof · cannot be bypassed
+
+Blocked/Escalated → Layer 1 catches them · never submitted to chain · no gas wasted
+Approved          → Layer 1 + Layer 2 · both must pass · atomic execution
+```
+
+**Layer 1 can be bypassed** by a compromised agent runtime. Treat it as a UX convenience and gas optimization — not a security boundary.
+
+**Layer 2 cannot be bypassed.** The Move contract validates the same five rules independently. A compromised SDK, a compromised agent, a compromised developer machine — none of these can circumvent the contract. The chain enforces the policy.
+
+---
+
+## ⚠️ zkLogin Salt Derivation Fix
+
+Most zkLogin implementations call `jwtToAddress(jwt, BigInt(0))` — hardcoding the salt as zero. This silently derives the wrong wallet address. Users can log in but their transactions fail or go to the wrong address.
+
+The correct pattern: fetch the unique salt from Enoki before deriving the address.
+
+Edge fixes this. Your users will have the correct wallet address derived from their Google identity.
 
 ---
 
@@ -229,25 +269,21 @@ Agent calls sdk.execute() — many times, autonomously
 
 **⛽ Sponsored Transactions** — Users never pay gas. Protocol-level primitive. On Ethereum: deploy and maintain a Paymaster contract. On Sui: one API key.
 
-**🧱 Programmable Transaction Blocks** — Policy check + execution + state update — one atomic block. If any step fails, everything reverts. Native to Sui.
+**🧱 Programmable Transaction Blocks** — Policy check + execution + state update — one atomic block. If any step fails, everything reverts. No partial state. No race conditions. Native to Sui.
 
 **📦 Object Model** — EdgePass is a first-class owned object in the user's wallet. An agent executes against it without ever taking ownership. On Ethereum: a contract mapping the developer can modify. On Sui: an object only the owner can touch.
 
-**🗂 Walrus** — Every execution writes an immutable audit receipt to decentralized storage. Built by the same team as Sui. Not IPFS. Not S3. Native.
+**🗂 Walrus** — Decentralized audit storage built by the same team as Sui. Byzantine fault-tolerant. Erasure-coded. Not IPFS. Not S3. Native.
+
+> You could build a worse version of Edge on Ethereum in months. On Sui it took 10 days — because every primitive was already there.
 
 ---
 
 ## 🔒 Security Model
 
-Edge has two enforcement layers:
-
-**Layer 1 — TypeScript PolicyEngine** — pre-flight, zero network calls, under 1ms. Fast feedback before any chain interaction. Can be bypassed by a compromised agent — treat as a convenience layer.
-
-**Layer 2 — Sui Move Contract** — on-chain enforcement by the Sui VM. Cannot be bypassed.
-
 ```
 sdk.validate()  →  TypeScript (instant preview, saves gas on rejections)
-sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof)
+sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof, final)
 ```
 
 The Move contract runs five assertions in the Sui VM before recording any spend:
@@ -258,6 +294,33 @@ assert!(now <= pass.expires_at, EPassExpired);
 assert!(is_merchant_approved(pass, &merchant), EMerchantNotApproved);
 assert!(pass.spent + amount <= pass.budget, EBudgetExceeded);
 assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
+```
+
+If any assertion fails, the entire transaction reverts. A compromised agent cannot bypass the contract. **The chain is the trust boundary.**
+
+---
+
+## Competitive Positioning
+
+Edge is the **policy layer** for the agentic economy. It is not a payment rail.
+
+| Solution | Layer | Open Source | Sui Native | simulate() | 3-line SDK |
+|----------|-------|-------------|------------|------------|------------|
+| **Edge Protocol** | Policy enforcement | ✅ | ✅ | ✅ | ✅ |
+| x402 (Coinbase) | Payment rail | ✅ | ❌ | ❌ | ❌ |
+| ERC-4337 | Account abstraction | ✅ | ❌ EVM only | ❌ | ❌ |
+| Trust Wallet Agent Kit | Wallet interactions | ✅ | Partial | ❌ | ❌ |
+| Cobo Agentic Wallet | Custody | ❌ Enterprise | ❌ | ❌ | ❌ |
+| Skyfire | Identity + settlement | ❌ | ❌ | ❌ | ❌ |
+
+**Edge complements x402, it does not compete with it.**
+
+x402 answers: *how does money move from agent to merchant?*
+Edge answers: *should this agent be allowed to spend this money at all?*
+
+```
+Edge (policy layer)  →  x402 (payment rail)  →  Settlement
+"is this allowed?"       "move the money"
 ```
 
 ---
@@ -308,22 +371,14 @@ cd packages/sdk && pnpm test
 ## 🚀 Local Development
 
 ```bash
-# Clone and install
 git clone https://github.com/fluturecode/edge.git
 cd edge && pnpm install
 
-# Set environment variables
 cp apps/web/.env.example apps/web/.env.local
-# Add: NEXT_PUBLIC_ENOKI_API_KEY, NEXT_PUBLIC_GOOGLE_CLIENT_ID, ANTHROPIC_API_KEY
+# Add: NEXT_PUBLIC_ENOKI_API_KEY, NEXT_PUBLIC_GOOGLE_CLIENT_ID, ANTHROPIC_API_KEY, GOOGLE_API_KEY
 
-# Run the demo app
-cd apps/web && pnpm dev
-# → http://localhost:3000
-
-# Run SDK tests
-cd packages/sdk && pnpm test
-
-# Build SDK
+cd apps/web && pnpm dev       # → http://localhost:3000
+cd packages/sdk && pnpm test  # → 34 passing
 cd packages/sdk && pnpm build
 ```
 
@@ -339,7 +394,7 @@ edge/
 │   │   ├── auth/callback/           zkLogin callback, Enoki address derivation
 │   │   ├── dashboard/               Main dashboard, EdgePass card
 │   │   ├── dashboard/create/        EdgePass creation + PTB preview
-│   │   └── dashboard/agent/         🤖 AI agent demo — Claude + EdgePass
+│   │   └── dashboard/agent/         🤖 AI agent demo — Claude + Gemini
 │   ├── lib/
 │   │   ├── signer.ts                zkLogin signer, gas coin resolution
 │   │   ├── zklogin.ts               ZK proof generation via Enoki
@@ -372,31 +427,35 @@ edge/
 
 ### Phase 1 — Foundation ✅ shipped
 
-- ✅ zkLogin onboarding — invisible wallet from Google
+- ✅ zkLogin onboarding — invisible wallet from Google (salt derivation fixed)
 - ✅ EdgePass creation — real Move object on Sui mainnet
 - ✅ PolicyEngine — 34 tests, pure TypeScript
+- ✅ Two-layer enforcement — TypeScript preview + Move contract source of truth
+- ✅ Human-in-the-loop escalation — agent pauses, awaits human approval via modal
 - ✅ Events system — `on('approved')`, `on('escalated')`, `on('blocked')`
-- ✅ simulate() — predict outcomes before executing
+- ✅ simulate() — predict full session outcomes before touching the chain
 - ✅ Budget helpers — `budgetStatus()`, `isNearLimit()`, `timeRemaining()`
+- ✅ withPolicy() — wrap any AI tool with on-chain enforcement in one line
 - ✅ React hooks — `useEdgePass`, `useBudgetStatus`, `useSimulate`
-- ✅ 🤖 Live AI agent demo — Claude + Gemini making real autonomous decisions
-- ✅ 🗂 Walrus audit logs — immutable receipts
-- ✅ 🔒 Seal policy encryption
+- ✅ 🤖 Live AI agent demo — Claude + Gemini, real autonomous decisions
+- ✅ 🔒 Seal policy serialization — encryption wired, network storage in v2
+- ✅ 🗂 Walrus architecture — audit log integration wired, real blobs in v2
 - ✅ Move contract — deployed to Sui mainnet
 - ✅ SDK on npm — @edge-protocol/sdk v0.9.x
 
 ### Phase 2 — Trust Layer 🔨 in progress
 
-- ⬜ Real Walrus blob storage (blocked on @mysten/sui v2 upgrade)
+- ⬜ Upgrade `@mysten/sui` to v2 — unlocks Walrus + Seal network storage
+- ⬜ Real Walrus blob storage — full decentralized audit trail
 - ⬜ Rolling time windows — `maxTransactionsPerHour`
 - ⬜ On-chain policy signatures — tamper-proof policy commitment
 - ⬜ Merchant address verification — verified Sui addresses on-chain
 - ⬜ Multi-token support — USDC, USDT, any Sui coin
-- ⬜ Tool-use architecture — Claude decides one transaction at a time
+- ⬜ Tool-use architecture — agent decides one transaction at a time, sees results
 
 ### Phase 3 — Protocol & Business 📋 coming
 
-- ⬜ Managed escalation dashboard
+- ⬜ Managed escalation dashboard — proprietary SaaS approval UI
 - ⬜ Enterprise guardrails — SOC2, SIEM, Fireblocks adapter
 - ⬜ Cross-agent coordination — multi-agent quorum execution
 - ⬜ Intent-based policies — natural language → on-chain rules
