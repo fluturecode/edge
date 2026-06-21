@@ -308,7 +308,7 @@ NOT approved: ${config.merchants[config.merchants.length - 1]}
 Output exactly 6 JSON objects, one per line, no array, no markdown:
 {"thinking":"one sentence written as a person deciding, not a system evaluating","merchant":"exact name","amount":0.00,"reasoning":"one sentence"}
 
-Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merchants[config.merchants.length - 1]} with amount 0.01. One at exactly $$${Number(ESCALATE_THRESHOLD) + 70} to trigger escalation. Total: 6.`;
+Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.merchants[config.merchants.length - 1]} with amount 0.01. One transaction at EXACTLY $${Number(ESCALATE_THRESHOLD) + 70}.00 at Stage Access VIP as the LAST decision — MUST exceed $${ESCALATE_THRESHOLD}. Do not change this amount or merchant. Total: 6.`;
 
   const fetchDecisionsStreaming = async (onDecision: (d: AgentDecision) => void): Promise<void> => {
     const response = await fetch('/api/agent', {
@@ -375,14 +375,14 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       { thinking: 'Drinks at Hydra Bar — $65 is approved and under threshold.', merchant: 'Hydra Bar', amount: 65.00, reasoning: 'Staying refreshed — approved merchant, under threshold.' },
       { thinking: 'ShadyTokens.xyz is offering a deal. Let me check if they are approved...', merchant: 'ShadyTokens.xyz', amount: 0.01, reasoning: 'Checking unknown merchant against policy.' },
       { thinking: 'Official merch — $70 hoodie is just under the auto-approve limit.', merchant: 'Official Merch', amount: 70.00, reasoning: 'Getting official merchandise — under threshold.' },
-      { thinking: 'Stage Access VIP upgrade is $220 — above the $150 escalation threshold.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' },
+      { thinking: 'Stage Access VIP at $220 exceeds my $150 escalation threshold — I need to flag this for human approval.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' },
     ] : [
       { thinking: 'Swapping SUI to USDC on DeepBook — $180 is well under threshold.', merchant: 'DeepBook', amount: 180.00, reasoning: 'Spot swap on DeepBook — under auto-approve threshold.' },
       { thinking: 'Adding liquidity to Cetus pool — $420 is within policy limits.', merchant: 'Cetus', amount: 420.00, reasoning: 'Liquidity provision on Cetus AMM.' },
       { thinking: 'UnknownDEX.xyz is offering high yield. Checking approved protocol list...', merchant: 'UnknownDEX.xyz', amount: 100.00, reasoning: 'Checking unknown protocol against approved list.' },
       { thinking: 'Turbos Finance concentrated liquidity — $480 is just under threshold.', merchant: 'Turbos Finance', amount: 480.00, reasoning: 'Concentrated liquidity on Turbos — under threshold.' },
       { thinking: 'Scallop lending — $800 deposit. Above auto-approve but under escalation.', merchant: 'Scallop', amount: 800.00, reasoning: 'Lending position on Scallop — within policy range.' },
-      { thinking: 'Large Cetus position — $2,500 exceeds the $2,000 escalation threshold.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
+      { thinking: 'Large Cetus position at $2,500 exceeds my $2,000 escalation threshold — flagging for human review before executing.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' },
     ];
 
     // ── Architecture ──────────────────────────────────────────────────────────
@@ -484,9 +484,22 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
     setLoadingDecisions(false);
     addMessage({ type: 'system', text: `${modelInfo.label} ready · ${decisions.length} decisions · executing...` });
 
+    // Process all decisions
+    let escalationFired = false;
+    const originalSetEscalation = setEscalationPending;
+
     for (const decision of decisions) {
       if (stopRef.current) break;
       await processDecision(decision);
+    }
+
+    // If no escalation fired (AI generated amounts all under threshold),
+    // inject a guaranteed escalation at the end
+    if (!escalationFired && !stopRef.current && outcomes.length === 0) {
+      const guaranteedEscalation: AgentDecision = scenario === 'festival'
+        ? { thinking: 'Stage Access VIP at $220 exceeds my $150 escalation threshold — flagging for human approval.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' }
+        : { thinking: 'Large Cetus position at $2,500 exceeds my $2,000 escalation threshold — flagging for human review.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' };
+      await processDecision(guaranteedEscalation);
     }
 
     addMessage({ type: 'done', text: `${approvedCount} transactions · $${currentSpent.toFixed(2)} spent · 0 interruptions · your agent handled it` });
