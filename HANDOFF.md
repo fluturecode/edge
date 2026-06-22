@@ -1,22 +1,22 @@
-# Edge — Complete Project Handoff v2
-*Last updated: June 18, 2026 — end of Day 3 build session (extended)*
-*Hours invested: ~42 hours total*
+# Edge — Complete Project Handoff v3
+*Last updated: June 22, 2026 — post-submission*
+*Hours invested: ~60 hours total*
 
 ---
 
 ## New Chat Prompt
 
-> I'm building Edge for Sui Overflow 2026. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@0.6.4. Full stack working — zkLogin, real on-chain EdgePass on MAINNET, AI agent demo, Walrus audit logs, 34 tests passing, events system, error handling. Read HANDOFF.md before continuing. Deadline: June 21, 2026.
+> I'm building Edge Protocol — programmable trust infrastructure for autonomous AI agents on Sui. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@0.9.2. Submitted to Sui Overflow 2026 on June 21. Read HANDOFF.md before continuing.
 
 ---
 
 ## Project Overview
 
-**Edge** is programmable trust infrastructure for autonomous onchain systems, built on Sui for Sui Overflow 2026 (Agentic Web track).
+**Edge** is programmable trust infrastructure for autonomous AI agents, built on Sui for Sui Overflow 2026 (Agentic Web track).
 
 **Pitch:** EdgePass gives agents your rules, not your keys.
 **Tagline:** The best infrastructure is invisible.
-**Validated by:** Independent Gemini research across 317 academic papers — all 4 core claims confirmed.
+**Status:** SUBMITTED ✅
 
 ---
 
@@ -25,158 +25,158 @@
 - **GitHub:** https://github.com/fluturecode/edge
 - **Live app:** https://edge-web-cyan.vercel.app
 - **npm:** https://npmjs.com/package/@edge-protocol/sdk
-- **Testnet contract:** https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
 - **Mainnet contract:** https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
+- **Testnet contract:** https://suiscan.xyz/testnet/object/0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
 
 ---
 
-## Current Network Status
+## Network Status
 
 **APP IS ON MAINNET** ✅
 
 ```
-NEXT_PUBLIC_SUI_NETWORK=mainnet  (set in Vercel)
 Mainnet Package ID: 0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
-Mainnet Tx: 4REcPLezK8gFGyUKJcMnnFXxTTvk8vbxqjU62NMeRJuS
+Mainnet Deploy Tx: 4REcPLezK8gFGyUKJcMnnFXxTTvk8vbxqjU62NMeRJuS
 Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
 ```
 
-**Enoki:** Public API key now has mainnet enabled (upgraded plan)
-**Walrus:** Writes proxied through /api/walrus server-side route to avoid CORS
-- Publisher: https://walrus-mainnet-publisher-1.staketab.org:443
-- Aggregator: https://walrus-mainnet.brightlystake.com
+---
+
+## SDK v0.9.2 — Full API Surface
+
+**Core:**
+- `sdk.create(config, signer)` — mint EdgePass on Sui
+- `sdk.execute(pass, request, signer)` — returns approved/blocked/escalated/error
+- `sdk.validate(pass, request)` — zero network, <1ms preview
+- `sdk.simulate(pass, requests[])` — predict full session, zero network
+- `sdk.fetch(objectId)` — get live pass from chain
+- `sdk.revoke(pass, signer)` — revoke on-chain
+
+**Budget helpers:**
+- `sdk.budgetStatus(pass)` — full snapshot
+- `sdk.utilizationPct(pass)` — 0-100
+- `sdk.isNearLimit(pass, threshold?)` — default 80%
+- `sdk.remainingBudget(pass)` — MIST
+- `sdk.timeRemaining(pass)` — ms
+- `sdk.isExpiringSoon(pass, withinMs?)` — default 1hr
+
+**Static:**
+- `EdgePass.fromTemplate(template, overrides)` — 5 templates
+- `EdgePass.withPolicy(pass, signer, sdk, fn)` — HOF for AI tools
+
+**Events:**
+- `sdk.on/off/removeAllListeners('approved'|'escalated'|'blocked')`
+
+**React hooks (`@edge-protocol/sdk/react`):**
+- `useEdgePass` — full featured
+- `useBudgetStatus` — lightweight
+- `useSimulate` — reactive
+
+**34 passing tests.**
 
 ---
 
-## SDK Current State
+## Critical Architecture Notes
 
-```
-@edge-protocol/sdk@0.6.4
-✅ 34/34 tests passing
-✅ Events system — on/off/removeAllListeners
-✅ Error handling — error/blocked/escalated distinction
-✅ classifyError — NETWORK_FAILURE, SIGNING_FAILURE, OBJECT_NOT_FOUND codes
-✅ fetchPass input validation + required fields check
-✅ fetchPass field mapping fixed for mainnet contract (expires_at not expiry_ms)
-✅ Config validation in create()
-✅ maxPerTransaction support
-✅ 5 templates
-✅ Consumer import test passes
-✅ Root pnpm test/build/dev scripts
-✅ DOCS.md — competitive positioning, security model, error status
-✅ README — Gemini-enhanced with agent framework examples
-✅ 856+ downloads
-```
+**`tx.object(pass.id)` is CORRECT** — resolves version at signing time. Never use `tx.objectRef()` — causes version conflicts with Enoki sponsorship.
+
+**Sequential execution** — 2s settle delay between approved txs. Prevents Sui object version conflicts.
+
+**zkLogin salt** — must fetch from Enoki `/v1/zklogin` GET. Never hardcode `BigInt(0)` — gives wrong address. This is the most common zkLogin bug.
+
+**Two-layer enforcement:**
+- Layer 1: TypeScript PolicyEngine — <1ms, zero network, blocked/escalated never touch chain
+- Layer 2: Move contract — five assertions in Sui VM, cannot be bypassed
+
+**Blocked/escalated** validated locally — never submitted to chain, no gas wasted.
 
 ---
 
-## Contract Field Names (IMPORTANT)
+## Contract Field Names
 
-The mainnet Move contract stores fields as:
 ```
 budget, auto_threshold, escalate_threshold, approved_merchants,
 owner, spent, active, created_at, expires_at
 ```
 
-Note: `expiry_ms` does NOT exist on-chain. The SDK calculates it as:
-`expiryMs = expires_at - created_at`
+Note: `expiry_ms` does NOT exist on-chain. SDK calculates: `expiryMs = expires_at - created_at`
 
 ---
 
-## Critical Auth Fix (Hard-Won)
+## App Architecture
 
-`jwtToAddress(jwt, BigInt(0))` gives WRONG address. Must call Enoki `/v1/zklogin` GET endpoint with JWT to get the correct salt-derived address.
+**Agent page flow:**
+1. Collect all decisions from Claude/Gemini (streaming in background)
+2. Stream with 120ms delay between cards — smooth progressive UI
+3. Blocked → instant local validation, never touches chain
+4. Escalated → Promise-based modal blocks execution until human resolves
+5. Approved → `sdk.execute()` sequentially with 2s settle
 
-**zkLogin address:** `0x7c06fb216c312ca8088deef35ff34637afafeda40fb40359be9e815c865cc1d0`
-**Mainnet SUI balance:** ~2.86 SUI (funded and ready)
+**API routes:**
+- `/api/sign` — Enoki transaction signing
+- `/api/agent` — edge runtime, collect-then-stream 120ms delay, Claude + Gemini
+- `/api/walrus` — mock Walrus proxy
+- `/api/zkp` — ZK proof generation
 
----
-
-## Transaction Signing Flow
-
-Using direct execution (bypassing Enoki sponsorship due to TTL issues):
-
-```
-signer.ts (browser):
-  1. Fetch sender's SUI coins from mainnet
-  2. Set sender, gas owner, gas budget, gas payment
-  3. Build full tx bytes
-  4. POST to /api/sign with fullTxBytes
-
-/api/sign (server):
-  1. Receive fullTxBytes
-  2. Sign with ephemeral key + getZkLoginSignature
-  3. suiClient.executeTransactionBlock with single zkLogin signature
-  4. Fetch created objectId from tx effects
-```
+**Current Gemini model:** `gemini-2.5-flash`
 
 ---
 
-## Environment Variables (Vercel)
+## What's Real vs Mocked
+
+**Real:**
+- Move contract on Sui mainnet with verifiable digests
+- zkLogin wallet derivation (salt fix applied)
+- Enoki gas sponsorship
+- Claude + Gemini inference
+- Seal policy serialization fires in console
+- SDK on npm with 3,500+ weekly downloads
+
+**Mocked:**
+- Walrus audit blob IDs — `local-{timestamp}` — blocked on `@mysten/sui` v2 upgrade
+- `@mysten/walrus` requires `@mysten/sui@^2.x`, app is on `1.30.x`
+
+---
+
+## Environment Variables
 
 ```
-NEXT_PUBLIC_ENOKI_API_KEY=enoki_public_eb0eeeb84f04768cf88a5d264bdf9ee6  (mainnet enabled)
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=522666980790-20qcuen79borlp62m9vjb3cgugi092n3.apps.googleusercontent.com
+NEXT_PUBLIC_ENOKI_API_KEY — enoki public key (mainnet enabled)
+NEXT_PUBLIC_GOOGLE_CLIENT_ID — Google OAuth client ID
 NEXT_PUBLIC_SUI_NETWORK=mainnet
 NEXT_PUBLIC_APP_URL=https://edge-web-cyan.vercel.app
-ENOKI_SECRET_KEY=enoki_private_d5807c3cb9c5fb1a2fb2f562380ef30b
-ANTHROPIC_API_KEY=<rotated — get from console.anthropic.com>
+ENOKI_SECRET_KEY — enoki private key (rotate after use)
+ANTHROPIC_API_KEY — from console.anthropic.com
+GOOGLE_API_KEY — paid tier required, gemini-2.5-flash
 ```
 
 ---
 
-## Known Issues / Pending
+## Identity & Addresses
 
-**Walrus CORS fix** — just deployed, needs testing:
-- Walrus writes now go through `/api/walrus` server-side proxy
-- Previously was calling Staketab publisher directly from browser (CORS blocked)
-- Should be fixed in latest deploy
-
-**Dashboard shows "testnet"** — may be localStorage cache:
-- Clear localStorage and login fresh to see mainnet
-- `localStorage.clear()` in DevTools console
-
-**GitHub Actions** — disable after mainnet deploy:
-- Go to Actions → Deploy Move Contract → Disable workflow
+- **zkLogin address:** `0x7c06fb216c312ca8088deef35ff34637afafeda40fb40359be9e815c865cc1d0`
+- **Deployer address:** `0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9`
+- **GitHub:** fluturecode
 
 ---
 
-## What's Left Before June 21
+## v1.0.0 Roadmap
 
-| Priority | Task | Status |
-|----------|------|--------|
-| 🔴 REQUIRED | Demo video (YouTube, ≤5 min) | PENDING |
-| 🔴 REQUIRED | DeepSurge submission | PENDING |
-| 🟡 HIGH | Verify Walrus works on mainnet after CORS fix | PENDING |
-| 🟡 HIGH | Clear localStorage + test full mainnet flow | PENDING |
-| 🟡 HIGH | Disable GitHub Actions | PENDING |
-| 🟡 HIGH | Update HANDOFF.md in repo | PENDING |
-| 🟢 NICE | Update README mainnet contract link | PENDING |
+1. Upgrade `@mysten/sui` to v2 — unlocks `@mysten/walrus` + `@mysten/seal` network storage
+2. Real Walrus blob storage — full decentralized audit trail
+3. Retry logic in ExecutionEngine on VERSION_CONFLICT
+4. `maxTransactionsPerHour` rolling window in PolicyEngine
+5. Publish v1.0.0
 
 ---
 
-## Video Script (5 min)
+## Post-Hackathon Priorities
 
-```
-0:00-0:20  Hook — "$2.3B in agent assets, no middle ground between key sharing and popups"
-0:20-1:00  The Primitive — create EdgePass on MAINNET, show Suiscan confirmation
-1:00-1:30  The Flex — 3 lines of code in VS Code
-1:30-3:30  Agent Demo — Claude reasoning, transactions, escalation modal, Walrus log
-3:30-4:00  Vision — PDR layer, Sui primitives, competitive positioning
-4:00-4:30  Numbers — 856 downloads, before this video
-4:30-5:00  Close — footer animation, "The best infrastructure is invisible."
-```
-
----
-
-## Competitive Positioning (Gemini Validated)
-
-- **Claim 1:** Only open-source npm package with 5D policy enforcement — ✅ VALIDATED
-- **Claim 2:** First trust delegation primitive on Sui — ✅ VALIDATED
-- **Claim 3:** TS engine + on-chain enforcement + Walrus + 3-outcome escalation is unique — ✅ VALIDATED
-- **Claim 4:** Complementary to x402, not competitive — ✅ VALIDATED
-
-Academic reference: arxiv.org/html/2601.04583v1
+- Apply for Sui Foundation ecosystem grant
+- Write zkLogin salt bug blog post — gets indexed, drives organic downloads
+- Post in Sui Discord + Mysten Labs Discord
+- DM Mastra + Vercel AI SDK teams about `withPolicy()`
+- v1.0.0 with real Walrus — that's the real public launch moment
 
 ---
 
@@ -187,34 +187,26 @@ apps/web/app/page.tsx                    — terminal typewriter login
 apps/web/app/auth/callback/page.tsx      — zkLogin callback
 apps/web/app/dashboard/page.tsx          — dashboard
 apps/web/app/dashboard/create/page.tsx   — EdgePass creation
-apps/web/app/dashboard/activity/page.tsx — Festival Mode simulation
 apps/web/app/dashboard/agent/page.tsx    — AI agent demo
 apps/web/lib/signer.ts                   — zkLogin signer, gas coin resolution
-apps/web/lib/walrus.ts                   — Walrus HTTP API (proxied)
+apps/web/lib/walrus.ts                   — Walrus HTTP API (mock proxy)
+apps/web/lib/seal.ts                     — Seal policy encryption
 apps/web/app/api/sign/route.ts           — transaction signing
-apps/web/app/api/walrus/route.ts         — Walrus write proxy (NEW — fixes CORS)
+apps/web/app/api/walrus/route.ts         — Walrus write proxy
 apps/web/app/api/zkp/route.ts            — ZK proof via Enoki
-apps/web/app/api/agent/route.ts          — Claude API for autonomous decisions
-packages/sdk/src/core/EdgePass.ts        — main API + events + config validation
-packages/sdk/src/core/PolicyEngine.ts    — validation logic (34 tests)
+apps/web/app/api/agent/route.ts          — Claude/Gemini API (edge runtime)
+packages/sdk/src/core/EdgePass.ts        — main API + events + simulate + withPolicy
+packages/sdk/src/core/PolicyEngine.ts    — validation + budget helpers (34 tests)
 packages/sdk/src/core/ExecutionEngine.ts — PTB builder + error handling
-packages/sdk/src/utils/types.ts          — all TypeScript types incl. error status
-packages/sdk/src/utils/constants.ts      — templates + Package IDs (both networks)
+packages/sdk/src/react/index.ts          — useEdgePass, useBudgetStatus, useSimulate
+packages/sdk/src/utils/types.ts          — all TypeScript types
+packages/sdk/src/utils/constants.ts      — templates + Package IDs + MIST_PER_SUI
 packages/sdk/src/test.ts                 — 34 comprehensive tests
+packages/sdk/CHANGELOG.md               — version history
 packages/sdk/DOCS.md                     — full developer reference
-packages/sdk/README.md                   — Gemini-enhanced SDK README
+packages/sdk/README.md                   — SDK README
+README.md                                — root repo README
 ```
-
----
-
-## Personal Laptop
-
-- 2017 MacBook Air (Intel) — sui move build crashes, use GitHub Actions
-- Sui wallet alias: festive-tourmaline
-- Deployer address: 0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9
-- zkLogin address: 0x7c06fb216c312ca8088deef35ff34637afafeda40fb40359be9e815c865cc1d0
-- Recovery: donkey match coil wait seed begin liar thrive sausage always deal drastic
-- GitHub Secret: SUI_PRIVATE_KEY=suiprivkey1qzewudzvd8avu8clh994qslcpdkpy8lfsfypd5ul9t5d9jgzhxnpvskxv2h
 
 ---
 
@@ -223,12 +215,24 @@ packages/sdk/README.md                   — Gemini-enhanced SDK README
 ```typescript
 bg: '#080C14', bgCard: '#0D1420', border: '#1A2740'
 blue: '#4DA2FF', teal: '#00D4AA', gold: '#FFB830', red: '#FF4D6A'
+purple: '#A78BFA', green: '#34D399'
+white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090'
 Fonts: DM Mono (terminal), Inter (body)
-Footer: vanish 7s animation — "The best infrastructure is invisible."
 ```
 
 ---
 
+## My Preferences
+
+- Complete files over diffs
+- Correct architecture over quick fixes
+- Honest about what's real vs mocked
+- No excessive comments in code
+- Sequential execution is correct for Sui object model — don't try to parallelize
+- `tx.object(pass.id)` not `tx.objectRef()` — learned this the hard way
+
+---
+
 *Built by Elizabeth Eidelson (@fluturecode)*
-*Sui Overflow 2026 — Agentic Web track*
+*Sui Overflow 2026 — Agentic Web track — SUBMITTED ✅*
 *The best infrastructure is invisible.*
