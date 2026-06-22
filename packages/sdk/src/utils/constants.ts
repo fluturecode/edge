@@ -57,6 +57,17 @@ export const EDGE_TEMPLATES = {
     expiryMs:          30 * 24 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
+  // x402 — designed for Coinbase x402 payment protocol integration
+  // Edge validates policy (should this agent pay?), x402 moves the money (how does it pay?)
+  // Together they form a complete autonomous payment stack.
+  x402: {
+    budget:            BigInt(1_000)  * MIST_PER_SUI,
+    autoThreshold:     BigInt(10)     * MIST_PER_SUI,
+    escalateThreshold: BigInt(100)    * MIST_PER_SUI,
+    maxPerTransaction: BigInt(200)    * MIST_PER_SUI,
+    expiryMs:          24 * 60 * 60 * 1000,
+    approvedMerchants: [] as string[],
+  },
 } as const;
 
 export type EdgePassTemplate = keyof typeof EDGE_TEMPLATES;

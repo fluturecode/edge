@@ -25,7 +25,7 @@ import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 
 const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: 'YOUR_KEY' });
 const pass = await sdk.create(EdgePass.fromTemplate('festival', { owner: userAddress }), signer);
-const outcome = await sdk.execute(pass, { merchant: 'Hydra Bar', amount: 32n * MIST_PER_SUI }, signer);
+const outcome = await sdk.execute(pass, { merchant: 'Hydra Bar', amount: BigInt(32) * MIST_PER_SUI }, signer);
 
 console.log(outcome.status); // 'approved' | 'escalated' | 'blocked'
 ```
@@ -58,6 +58,7 @@ EdgePass.fromTemplate('gaming',       { owner })  // $50   · auto <$2   · esca
 EdgePass.fromTemplate('subscription', { owner })  // $200  · auto <$20  · escalate >$50  · 30d
 EdgePass.fromTemplate('defi',         { owner })  // $10k  · auto <$500 · escalate >$1k  · 7d
 EdgePass.fromTemplate('enterprise',   { owner })  // $50k  · auto <$1k  · escalate >$5k  · 30d
+EdgePass.fromTemplate('x402',         { owner })  // $1k   · auto <$10  · escalate >$100 · 24h · x402 payments
 ```
 
 Example — brand licensing agent:
@@ -65,7 +66,7 @@ Example — brand licensing agent:
 ```typescript
 EdgePass.fromTemplate('enterprise', {
   approvedMerchants: ['nike-licensing.sui', 'brand-registry.sui'],
-  escalateThreshold: 10_000n * MIST_PER_SUI,
+  escalateThreshold: BigInt(10_000) * MIST_PER_SUI,
   owner: cfoAddress,
 })
 // Enforce IP usage terms autonomously — no lawyers, no monitoring, no surprises
@@ -79,9 +80,9 @@ Plan an agent's session without touching the chain. Zero network calls.
 
 ```typescript
 const plan = sdk.simulate(pass, [
-  { merchant: 'Shuttle Express',  amount: 45n * MIST_PER_SUI },
-  { merchant: 'ShadyTokens.xyz',  amount: 1n },
-  { merchant: 'Stage Access VIP', amount: 220n * MIST_PER_SUI },
+  { merchant: 'Shuttle Express',  amount: BigInt(45) * MIST_PER_SUI },
+  { merchant: 'ShadyTokens.xyz',  amount: BigInt(1) },
+  { merchant: 'Stage Access VIP', amount: BigInt(220) * MIST_PER_SUI },
 ]);
 
 console.log(plan.summary);
@@ -161,7 +162,7 @@ const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (request) => {
 // blocked/escalated never reach your tool logic
 const { outcome, result } = await safePurchase({
   merchant: 'Hydra Bar',
-  amount: 32n * MIST_PER_SUI,
+  amount: BigInt(32) * MIST_PER_SUI,
 });
 ```
 
@@ -204,7 +205,7 @@ function AgentDashboard({ passId, signer }) {
   return (
     <div>
       <progress value={budgetStatus?.utilizationPct} max={100} />
-      <button onClick={() => execute({ merchant: 'Hydra Bar', amount: 32n * MIST_PER_SUI })}>
+      <button onClick={() => execute({ merchant: 'Hydra Bar', amount: BigInt(32) * MIST_PER_SUI })}>
         Purchase
       </button>
     </div>
@@ -293,6 +294,52 @@ if (preview.requiresEscalation) showEscalationModal(preview.reason);
 
 ---
 
+## 🔗 x402 Integration
+
+Edge and x402 are complementary layers in the autonomous payment stack.
+
+x402 answers: *how does money move from agent to merchant?*
+Edge answers: *should this agent be allowed to spend this money at all?*
+
+```
+Edge (policy layer)  →  x402 (payment rail)  →  Settlement
+"is this allowed?"       "move the money"
+```
+
+```typescript
+import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
+
+// 1. Create a trust boundary scoped for x402 payments
+const pass = await sdk.create(
+  EdgePass.fromTemplate('x402', {
+    approvedMerchants: ['api.example.com', 'data.provider.com'],
+    owner: agentAddress,
+  }),
+  signer
+);
+
+// 2. Edge validates policy before x402 moves money
+const outcome = await sdk.execute(pass, {
+  merchant: endpoint,
+  amount: BigInt(Math.floor(amountUSD * 1e9)),
+}, signer);
+
+if (outcome.status === 'approved') {
+  // 3. x402 handles the actual payment
+  await fetch(endpoint, {
+    headers: { 'X-Payment': await createX402Payment(amount) }
+  });
+}
+
+if (outcome.status === 'escalated') {
+  await notifyUser('Payment requires your approval');
+}
+
+// blocked → never reaches x402, policy rejected it
+```
+
+---
+
 ## 🔒 Security Model
 
 Edge has two enforcement layers:
@@ -360,7 +407,7 @@ yarn add @edge-protocol/sdk
 ```
 
 React hook (requires React 18+):
-```bash
+```typescript
 import { useEdgePass } from '@edge-protocol/sdk/react';
 ```
 
@@ -372,24 +419,16 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 Edge is the **policy layer** for the agentic economy. It is not a payment rail.
 
-| Solution | Layer | Open Source | Sui Native | 3-line SDK |
-|----------|-------|-------------|------------|------------|
-| **Edge Protocol** | Policy enforcement | ✅ | ✅ | ✅ |
-| x402 (Coinbase) | Payment rail | ✅ | ❌ | ❌ |
-| ERC-4337 | Account abstraction | ✅ | ❌ EVM only | ❌ |
-| Trust Wallet Agent Kit | Wallet interactions | ✅ | Partial | ❌ |
-| Cobo Agentic Wallet | Custody | ❌ Enterprise | ❌ | ❌ |
-| Skyfire | Identity + settlement | ❌ | ❌ | ❌ |
+| Solution | Layer | Open Source | Sui Native | simulate() | 3-line SDK |
+|----------|-------|-------------|------------|------------|------------|
+| **Edge Protocol** | Policy enforcement | ✅ | ✅ | ✅ | ✅ |
+| x402 (Coinbase) | Payment rail | ✅ | ❌ | ❌ | ❌ |
+| ERC-4337 | Account abstraction | ✅ | ❌ EVM only | ❌ | ❌ |
+| Trust Wallet Agent Kit | Wallet interactions | ✅ | Partial | ❌ | ❌ |
+| Cobo Agentic Wallet | Custody | ❌ Enterprise | ❌ | ❌ | ❌ |
+| Skyfire | Identity + settlement | ❌ | ❌ | ❌ | ❌ |
 
 **Edge complements x402, it does not compete with it.**
-
-x402 answers: *how does money move from agent to merchant?*
-Edge answers: *should this agent be allowed to spend this money at all?*
-
-```
-Edge (policy layer)  →  x402 (payment rail)  →  Settlement
-"is this allowed?"       "move the money"
-```
 
 ---
 
