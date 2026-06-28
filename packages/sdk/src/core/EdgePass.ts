@@ -41,6 +41,7 @@ export class EdgePass {
   private client: SuiClient;
   private engine: ExecutionEngine;
   private config: EdgeSDKConfig;
+  // eslint-disable-next-line @typescript-eslint/ban-types
   private listeners: Map<EdgePassEventType, Set<Function>> = new Map();
 
   constructor(config: EdgeSDKConfig) {
@@ -87,7 +88,11 @@ export class EdgePass {
     const listeners = this.listeners.get(payload.type);
     if (!listeners) return;
     for (const listener of listeners) {
-      try { listener(payload); } catch (e) { console.error(`EdgePass event listener error (${payload.type}):`, e); }
+      try {
+        listener(payload);
+      } catch (e) {
+        console.error(`EdgePass event listener error (${payload.type}):`, e);
+      }
     }
   }
 
@@ -145,6 +150,97 @@ export class EdgePass {
 
       const result = await fn(request);
       return { outcome, result };
+    };
+  }
+
+  /**
+   * Wrap an Edge policy check with Fireblocks settlement.
+   *
+   * Edge validates policy on Sui mainnet. If approved, Fireblocks executes
+   * the settlement and links the Edge digest in the transaction note.
+   * Blocked and escalated decisions never reach Fireblocks.
+   *
+   * Every Fireblocks transaction is traceable back to an immutable Edge
+   * approval on Sui mainnet — full audit trail for compliance.
+   *
+   * @example
+   * const safeTx = EdgePass.withFireblocks(pass, signer, sdk, {
+   *   settle: async (approved) => {
+   *     return await fireblocks.createTransaction({
+   *       assetId: 'USDC_BASE',
+   *       amount: approved.amountUSD,
+   *       source: { type: 'VAULT_ACCOUNT', id: '0' },
+   *       destination: { type: 'ONE_TIME_ADDRESS', oneTimeAddress: { address: approved.destinationAddress } },
+   *       note: `Edge approved: ${approved.edgeDigest}`,
+   *     });
+   *   },
+   *   onEscalated: async ({ request, reason }) => {
+   *     await notifySlack(`Approval required: ${reason}`);
+   *   },
+   * });
+   *
+   * const result = await safeTx({
+   *   merchant: 'aws-billing.vendor',
+   *   amount: BigInt(450) * MIST_PER_SUI,
+   *   amountUSD: '450.00',
+   *   destinationAddress: '0x...',
+   * });
+   */
+  static withFireblocks<TSettlement>(
+    pass: EdgePassObject,
+    signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> },
+    sdk: EdgePass,
+    options: {
+      /** Called when Edge approves — execute your Fireblocks settlement here */
+      settle: (approved: {
+        edgeDigest: string;
+        merchant: string;
+        amount: bigint;
+        amountUSD: string;
+        destinationAddress: string;
+      }) => Promise<TSettlement>;
+      /** Called when Edge escalates — notify human approver */
+      onEscalated?: (context: {
+        request: TransactionRequest & { amountUSD: string; destinationAddress: string };
+        reason: string;
+      }) => Promise<void>;
+      /** Called when Edge blocks — log or alert */
+      onBlocked?: (context: {
+        request: TransactionRequest & { amountUSD: string; destinationAddress: string };
+        reason: string;
+      }) => Promise<void>;
+    }
+  ): (request: TransactionRequest & { amountUSD: string; destinationAddress: string }) => Promise<{
+    outcome: TransactionOutcome;
+    settlement?: TSettlement;
+    edgeDigest?: string;
+  }> {
+    return async (request) => {
+      const outcome = await sdk.execute(pass, request, signer);
+
+      if (outcome.status === 'approved') {
+        const settlement = await options.settle({
+          edgeDigest: outcome.digest,
+          merchant: request.merchant,
+          amount: request.amount,
+          amountUSD: request.amountUSD,
+          destinationAddress: request.destinationAddress,
+        });
+
+        return { outcome, settlement, edgeDigest: outcome.digest };
+      }
+
+      if (outcome.status === 'escalated') {
+        await options.onEscalated?.({ request, reason: outcome.reason });
+        return { outcome };
+      }
+
+      if (outcome.status === 'blocked') {
+        await options.onBlocked?.({ request, reason: outcome.reason });
+        return { outcome };
+      }
+
+      return { outcome };
     };
   }
 

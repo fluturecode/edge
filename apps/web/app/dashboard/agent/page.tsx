@@ -60,6 +60,14 @@ interface AgentMessage {
   digest?: string;
   model?: string;
   provider?: string;
+  fireblocksSettlement?: {
+    txId: string;
+    assetId: string;
+    amount: string;
+    network: string;
+    note: string;
+    status: string;
+  };
 }
 
 interface AgentDecision {
@@ -264,6 +272,25 @@ function EscalationModal({ step, onApprove, onReject }: {
   );
 }
 
+// ── Fireblocks mock helper ────────────────────────────────────────────────────
+// Generates a realistic simulated Fireblocks sandbox transaction ID and note
+// In production: replace with real Fireblocks SDK call
+function mockFireblocksSettlement(merchant: string, amount: number, edgeDigest: string) {
+  const chars = 'abcdef0123456789';
+  const txId = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
+    '-' + Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
+    '-' + Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
+    '-' + Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return {
+    txId,
+    assetId: 'USDC_BASE',
+    amount: amount.toFixed(2),
+    network: 'Base',
+    note: `Edge approved: ${edgeDigest}`,
+    status: 'SUBMITTED',
+  };
+}
+
 export default function AgentPage() {
   const router = useRouter();
   const [scenario, setScenario] = useState<'festival' | 'defi'>('festival');
@@ -400,7 +427,8 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
           setSpent(currentSpent); setTxCount(approvedCount);
-          addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
+          const fbSettlement = mockFireblocksSettlement(step.merchant, step.amount, outcome.digest);
+          addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest, fireblocksSettlement: fbSettlement });
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
           await new Promise(r => setTimeout(r, 2000));
@@ -684,18 +712,43 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
                   </div>
                 )}
                 {msg.type === 'outcome' && msg.status === 'approved' && (
-                  <div style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 10, color: T.teal, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>APPROVED ON-CHAIN</div>
-                        <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {/* Edge approval — Sui mainnet */}
+                    <div style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: T.teal, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>APPROVED ON-CHAIN · SUI MAINNET</div>
+                          <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)}</div>
+                        </div>
+                        {msg.digest && (
+                          <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
+                            {msg.digest.slice(0, 8) + '...↗'}
+                          </a>
+                        )}
                       </div>
-                      {msg.digest && (
-                        <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
-                          {msg.digest.slice(0, 8) + '...'}
-                        </a>
-                      )}
                     </div>
+                    {/* Fireblocks settlement — Base + USDC */}
+                    {msg.fireblocksSettlement && (
+                      <div style={{ background: 'rgba(255,140,0,0.06)', border: '1px solid rgba(255,140,0,0.25)', borderRadius: 8, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                              <div style={{ fontSize: 10, color: '#FF8C00', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>FIREBLOCKS SETTLEMENT</div>
+                              <div style={{ fontSize: 9, color: '#FF8C00', fontFamily: 'DM Mono, monospace', background: 'rgba(255,140,0,0.15)', padding: '1px 5px', borderRadius: 3 }}>{msg.fireblocksSettlement.status}</div>
+                            </div>
+                            <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif', marginBottom: 4 }}>
+                              {msg.fireblocksSettlement.assetId} · ${msg.fireblocksSettlement.amount} · {msg.fireblocksSettlement.network}
+                            </div>
+                            <div style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              note: "{msg.fireblocksSettlement.note}"
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#FF8C00', fontFamily: 'DM Mono, monospace', flexShrink: 0, marginLeft: 8 }}>
+                            {msg.fireblocksSettlement.txId.slice(0, 12) + '...'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {msg.type === 'outcome' && msg.status === 'blocked' && (
