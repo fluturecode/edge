@@ -16,6 +16,8 @@ As autonomous agents begin managing real assets onchain, they need a trust layer
 
 EdgePass is the policy layer — scoped, programmatic spend authority issued directly to agent runtimes, with cryptographic guardrails enforced by the Sui VM. Not a payment rail. Not a wallet. The boundary between what an agent can do and what it cannot.
 
+**Edge is Sui-native by design.** The policy enforcement lives on Sui mainnet where it cannot be tampered with. Your assets stay exactly where they are — on whatever chains your custody provider already manages. Sui is the notary. Your custody layer is the bank.
+
 ---
 
 ## ⚡ Quickstart — 3 Lines of Code
@@ -58,18 +60,17 @@ EdgePass.fromTemplate('gaming',       { owner })  // $50   · auto <$2   · esca
 EdgePass.fromTemplate('subscription', { owner })  // $200  · auto <$20  · escalate >$50  · 30d
 EdgePass.fromTemplate('defi',         { owner })  // $10k  · auto <$500 · escalate >$1k  · 7d
 EdgePass.fromTemplate('enterprise',   { owner })  // $50k  · auto <$1k  · escalate >$5k  · 30d
-EdgePass.fromTemplate('x402',         { owner })  // $1k   · auto <$10  · escalate >$100 · 24h · x402 payments
+EdgePass.fromTemplate('x402',         { owner })  // $1k   · auto <$10  · escalate >$100 · 24h
 ```
 
-Example — brand licensing agent:
+Example — enterprise treasury agent:
 
 ```typescript
 EdgePass.fromTemplate('enterprise', {
-  approvedMerchants: ['nike-licensing.sui', 'brand-registry.sui'],
-  escalateThreshold: BigInt(10_000) * MIST_PER_SUI,
-  owner: cfoAddress,
+  approvedMerchants: ['aws-billing.vendor', 'stripe-fees.vendor', 'github-enterprise.vendor'],
+  escalateThreshold: BigInt(5_000) * MIST_PER_SUI,
+  owner: treasuryAddress,
 })
-// Enforce IP usage terms autonomously — no lawyers, no monitoring, no surprises
 ```
 
 ---
@@ -88,10 +89,6 @@ const plan = sdk.simulate(pass, [
 console.log(plan.summary);
 // { approvedCount: 1, blockedCount: 1, escalatedCount: 1, totalDecisions: 3 }
 
-console.log(plan.utilizationPct); // projected budget usage after approved decisions
-console.log(plan.remainingBudget); // projected remaining in MIST
-
-// Show plan to user, then execute approved decisions
 for (const decision of plan.approved) {
   await sdk.execute(pass, decision.request, signer);
 }
@@ -103,19 +100,12 @@ for (const decision of plan.approved) {
 
 ```typescript
 const status = sdk.budgetStatus(pass);
-// {
-//   budget: 500000000000n,
-//   spent: 218000000000n,
-//   remaining: 282000000000n,
-//   utilizationPct: 43.6,
-//   isNearLimit: false,   // true when > 80%
-//   isExhausted: false,
-// }
+// { budget, spent, remaining, utilizationPct, isNearLimit, isExhausted }
 
 sdk.utilizationPct(pass)         // 43.6
 sdk.isNearLimit(pass)            // false (default threshold: 80%)
 sdk.isNearLimit(pass, 0.5)       // true if > 50% spent
-sdk.remainingBudget(pass)        // 282000000000n MIST
+sdk.remainingBudget(pass)        // remaining in MIST
 sdk.timeRemaining(pass)          // ms until expiry
 sdk.isExpiringSoon(pass)         // true if expires within 1 hour
 ```
@@ -124,33 +114,6 @@ sdk.isExpiringSoon(pass)         // true if expires within 1 hour
 
 ## 🤖 Agent Framework Integration
 
-### Vercel AI SDK / Mastra
-
-```typescript
-import { tool } from 'ai';
-import { z } from 'zod';
-import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
-
-export const autonomousPurchaseTool = tool({
-  description: 'Purchase assets or services autonomously within policy boundaries.',
-  parameters: z.object({
-    merchant:  z.string(),
-    amountSUI: z.number(),
-  }),
-  execute: async ({ merchant, amountSUI }) => {
-    const outcome = await sdk.execute(currentPass, {
-      merchant,
-      amount: BigInt(Math.floor(amountSUI * 1e9)),
-    }, agentSigner);
-
-    if (outcome.status === 'blocked')   return { success: false, error: `Blocked: ${outcome.reason}` };
-    if (outcome.status === 'escalated') return { success: false, error: `Escalated: ${outcome.reason}` };
-
-    return { success: true, digest: outcome.digest };
-  }
-});
-```
-
 ### `withPolicy` — Wrap Any Tool
 
 ```typescript
@@ -158,13 +121,62 @@ const safePurchase = EdgePass.withPolicy(pass, signer, sdk, async (request) => {
   return await purchaseItem(request.merchant, request.amount);
 });
 
-// safePurchase enforces EdgePass policy automatically
 // blocked/escalated never reach your tool logic
 const { outcome, result } = await safePurchase({
   merchant: 'Hydra Bar',
   amount: BigInt(32) * MIST_PER_SUI,
 });
 ```
+
+### `withFireblocks` — Edge Policy + Fireblocks Settlement
+
+For teams using Fireblocks as their custody layer. Edge validates policy on Sui mainnet. If approved, your `settle` function executes the Fireblocks transaction. The Edge digest is recorded in the Fireblocks transaction note — full audit trail linking every Fireblocks settlement back to an immutable on-chain Edge approval.
+
+Blocked and escalated decisions never reach Fireblocks.
+
+```typescript
+const safeTx = EdgePass.withFireblocks(pass, signer, sdk, {
+  settle: async ({ edgeDigest, amountUSD, destinationAddress }) => {
+    return await fireblocks.createTransaction({
+      assetId: 'USDC_BASE',
+      amount: amountUSD,
+      source: { type: 'VAULT_ACCOUNT', id: '0' },
+      destination: { type: 'ONE_TIME_ADDRESS', oneTimeAddress: { address: destinationAddress } },
+      note: `Edge approved: ${edgeDigest}`,
+    });
+  },
+  onEscalated: async ({ request, reason }) => {
+    await notifySlack(`Approval required: ${reason}`);
+  },
+  onBlocked: async ({ request, reason }) => {
+    console.log('Blocked by policy:', reason);
+  },
+});
+
+const result = await safeTx({
+  merchant: 'aws-billing.vendor',
+  amount: BigInt(450) * MIST_PER_SUI,
+  amountUSD: '450.00',
+  destinationAddress: '0x...',
+});
+// approved  → Fireblocks settled, edgeDigest in transaction note
+// escalated → onEscalated fired, Fireblocks never called
+// blocked   → onBlocked fired, Fireblocks never called
+```
+
+The architecture:
+
+```
+Agent proposes transaction
+         ↓
+Edge validates policy (Sui mainnet)     ← approved + digest
+         ↓
+Fireblocks executes settlement          ← note: "Edge approved: {digest}"
+         ↓
+Settlement on Base / Solana / Ethereum
+```
+
+See [edge-fireblocks](https://github.com/fluturecode/edge-fireblocks) for a full reference implementation with treasury, trading, and enterprise payment scenarios.
 
 ### Native Agent System Prompt
 
@@ -196,7 +208,7 @@ function AgentDashboard({ passId, signer }) {
     network: 'mainnet',
     enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY!,
     signer,
-    autoRefresh: true, // re-fetch after every approved execute
+    autoRefresh: true,
   });
 
   if (loading) return <Spinner />;
@@ -222,7 +234,7 @@ Three hooks available:
 
 ## 📊 Execution Results
 
-Every `sdk.execute()` returns a structured outcome — not a flat string:
+Every `sdk.execute()` returns a structured outcome:
 
 ```typescript
 type TransactionOutcome =
@@ -230,22 +242,11 @@ type TransactionOutcome =
   | { status: 'escalated'; reason: string; auto: false; }
   | { status: 'blocked';   reason: string; auto: false; }
   | { status: 'error';     reason: string; code?: string; auto: false; }
-
-// Approved
-{ status: 'approved', digest: '4REcPLezK8gF...', auto: true }
-
-// Blocked
-{ status: 'blocked', reason: 'Merchant "ShadyTokens.xyz" is not approved', auto: false }
-
-// Escalated
-{ status: 'escalated', reason: 'Amount exceeds $100 escalation threshold', auto: false }
 ```
 
 ---
 
 ## 🔔 Events System
-
-React to decisions without polling:
 
 ```typescript
 sdk
@@ -262,10 +263,6 @@ sdk
 
 await sdk.execute(pass, request, signer);
 ```
-
----
-
-## 🔌 Pluggable Escalation Handlers
 
 Route escalation alerts to Slack, Telegram, or your dashboard:
 
@@ -302,14 +299,13 @@ x402 answers: *how does money move from agent to merchant?*
 Edge answers: *should this agent be allowed to spend this money at all?*
 
 ```
-Edge (policy layer)  →  x402 (payment rail)  →  Settlement
-"is this allowed?"       "move the money"
+Edge (policy layer, Sui)  →  x402 (payment rail)  →  Settlement
+"is this allowed?"             "move the money"
 ```
 
-```typescript
-import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
+> **Note:** Edge is Sui-native. Your assets don't move to Sui — Edge validates policy there and returns an approval. x402 then handles the payment on whatever chain the merchant accepts.
 
-// 1. Create a trust boundary scoped for x402 payments
+```typescript
 const pass = await sdk.create(
   EdgePass.fromTemplate('x402', {
     approvedMerchants: ['api.example.com', 'data.provider.com'],
@@ -318,14 +314,9 @@ const pass = await sdk.create(
   signer
 );
 
-// 2. Edge validates policy before x402 moves money
-const outcome = await sdk.execute(pass, {
-  merchant: endpoint,
-  amount: BigInt(Math.floor(amountUSD * 1e9)),
-}, signer);
+const outcome = await sdk.execute(pass, { merchant: endpoint, amount }, signer);
 
 if (outcome.status === 'approved') {
-  // 3. x402 handles the actual payment
   await fetch(endpoint, {
     headers: { 'X-Payment': await createX402Payment(amount) }
   });
@@ -334,8 +325,7 @@ if (outcome.status === 'approved') {
 if (outcome.status === 'escalated') {
   await notifyUser('Payment requires your approval');
 }
-
-// blocked → never reaches x402, policy rejected it
+// blocked → never reaches x402
 ```
 
 ---
@@ -344,16 +334,16 @@ if (outcome.status === 'escalated') {
 
 Edge has two enforcement layers:
 
-**Layer 1 — TypeScript PolicyEngine** — pre-flight, zero network calls, under 1ms. Can be bypassed by a compromised agent runtime. Treat as a UX convenience and performance optimization — not a security boundary.
+**Layer 1 — TypeScript PolicyEngine** — pre-flight, zero network calls, under 1ms. Blocked and escalated decisions never touch the chain — no gas wasted. Can be bypassed by a compromised agent runtime. Treat as a convenience layer.
 
-**Layer 2 — Sui Move Contract** — on-chain enforcement by the Sui VM. Cannot be bypassed. The EdgePass object validates all policy dimensions independently at the protocol level. This is the source of truth.
+**Layer 2 — Sui Move Contract** — on-chain enforcement by the Sui VM. Cannot be bypassed. This is the source of truth.
 
 ```
 sdk.validate()  →  TypeScript (instant preview, saves gas on rejections)
 sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof, final)
 ```
 
-The Move contract runs five assertions inside the Sui VM before recording any spend:
+The Move contract runs five assertions before recording any spend:
 
 ```move
 assert!(pass.active, EPassInactive);
@@ -363,7 +353,7 @@ assert!(pass.spent + amount <= pass.budget, EBudgetExceeded);
 assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
 ```
 
-If any assertion fails, the entire transaction reverts. A compromised agent cannot bypass the contract. **The chain is the trust boundary.**
+If any assertion fails, the entire transaction reverts. **The chain is the trust boundary.**
 
 ---
 
@@ -400,9 +390,7 @@ Network:  Sui Mainnet ✅
 
 ```bash
 npm install @edge-protocol/sdk
-# or
 pnpm add @edge-protocol/sdk
-# or
 yarn add @edge-protocol/sdk
 ```
 
@@ -417,23 +405,22 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Competitive Positioning
 
-Edge is the **policy layer** for the agentic economy. It is not a payment rail.
+Edge is the **policy layer** for the agentic economy. It is not a payment rail or a custody solution.
 
-| Solution | Layer | Open Source | Sui Native | simulate() | 3-line SDK |
-|----------|-------|-------------|------------|------------|------------|
+| Solution | Layer | Open Source | Sui Native | simulate() | withFireblocks() |
+|----------|-------|-------------|------------|------------|-----------------|
 | **Edge Protocol** | Policy enforcement | ✅ | ✅ | ✅ | ✅ |
 | x402 (Coinbase) | Payment rail | ✅ | ❌ | ❌ | ❌ |
 | ERC-4337 | Account abstraction | ✅ | ❌ EVM only | ❌ | ❌ |
 | Trust Wallet Agent Kit | Wallet interactions | ✅ | Partial | ❌ | ❌ |
 | Cobo Agentic Wallet | Custody | ❌ Enterprise | ❌ | ❌ | ❌ |
 | Skyfire | Identity + settlement | ❌ | ❌ | ❌ | ❌ |
+| Fireblocks | Custody + execution | ❌ Enterprise | ❌ | ❌ | N/A — integrates |
 
-**Edge complements x402, it does not compete with it.**
+**Edge complements x402 and Fireblocks. It does not compete with them.**
 
 ---
 
 *The best infrastructure is invisible.*
 
-Built for Sui Overflow 2026 · MIT License
-
-[GitHub](https://github.com/fluturecode/edge) · [npm](https://npmjs.com/package/@edge-protocol/sdk)
+MIT License · [GitHub](https://github.com/fluturecode/edge) · [npm](https://npmjs.com/package/@edge-protocol/sdk)
