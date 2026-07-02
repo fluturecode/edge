@@ -43,7 +43,7 @@ export default function Callback() {
         } else {
           // Fallback to local derivation with salt 0
           const { jwtToAddress } = await import('@mysten/sui/zklogin');
-          suiAddress = jwtToAddress(idToken, BigInt(0), '');
+          suiAddress = jwtToAddress(idToken, BigInt(0), true);
           console.log('Fallback address:', suiAddress);
         }
 
