@@ -1,8 +1,11 @@
-import { SuiClient } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Transaction } from '@mysten/sui/transactions';
 import { toBase64 } from '@mysten/sui/utils';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
+const suiClient = new SuiJsonRpcClient({
+  url: 'https://fullnode.mainnet.sui.io:443',
+  network: 'mainnet',
+});
 
 export function getUserAddress(): string | null {
   if (typeof window === 'undefined') return null;
@@ -31,7 +34,6 @@ export function buildSigner(_enokiApiKey: string) {
       const maxEpoch = Number(localStorage.getItem('edge_max_epoch'));
       if (!ephemeralKey || !proofStr) throw new Error('Missing zkLogin credentials');
 
-      // Fetch sender's own gas coins to avoid Enoki-tainted gas objects
       const coins = await suiClient.getCoins({ owner: sender, coinType: '0x2::sui::SUI' });
       if (!coins.data.length) throw new Error('No SUI coins found. Fund your address at faucet.mainnet.sui.io');
 
@@ -46,7 +48,7 @@ export function buildSigner(_enokiApiKey: string) {
         digest:   gasCoin.digest,
       }]);
 
-      const fullTxBytes = toBase64(await tx.build({ client: suiClient }));
+      const fullTxBytes = toBase64(await tx.build({ client: suiClient as any }));
 
       const res = await fetch('/api/sign', {
         method: 'POST',

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fromBase64, toBase64 } from '@mysten/sui/utils';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { getZkLoginSignature } from '@mysten/zklogin';
-import { SuiClient } from '@mysten/sui/client';
+import { getZkLoginSignature } from '@mysten/sui/zklogin';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
+const suiClient = new SuiJsonRpcClient({
+  url: 'https://fullnode.mainnet.sui.io:443',
+  network: 'mainnet',
+});
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -19,7 +22,6 @@ export async function POST(req: NextRequest) {
     const addressSeed = zkProof.addressSeed;
     const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
 
-    // Sign the pre-built transaction bytes directly
     const txBytes = fromBase64(fullTxBytes);
     const { signature: ephemeralSignature } = await keypair.signTransaction(txBytes);
     const zkSignature = getZkLoginSignature({

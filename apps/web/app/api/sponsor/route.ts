@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fromBase64 } from '@mysten/sui/utils';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { getZkLoginSignature, genAddressSeed } from '@mysten/zklogin';
-import { SuiClient } from '@mysten/sui/client';
+import { getZkLoginSignature, genAddressSeed } from '@mysten/sui/zklogin';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { jwtDecode } from 'jwt-decode';
 
-const suiClient = new SuiClient({ url: 'https://fullnode.mainnet.sui.io:443' });
+const suiClient = new SuiJsonRpcClient({
+  url: 'https://fullnode.mainnet.sui.io:443',
+  network: 'mainnet',
+});
 
 export async function POST(req: NextRequest) {
   const { txBytes, ephemeralKey, zkProof, maxEpoch, idToken } = await req.json();
 
-  // Derive addressSeed from JWT sub claim + salt
   const decoded = jwtDecode(idToken) as { sub: string; aud: string | string[] };
   const aud = Array.isArray(decoded.aud) ? decoded.aud[0] : decoded.aud;
   const addressSeed = genAddressSeed(BigInt(0), 'sub', decoded.sub, aud).toString();
