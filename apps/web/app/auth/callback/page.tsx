@@ -42,7 +42,7 @@ export default function Callback() {
           console.log('Enoki address:', suiAddress, 'salt:', userSalt);
         } else {
           // Fallback to local derivation with salt 0
-          const { jwtToAddress } = await import('@mysten/zklogin');
+          const { jwtToAddress } = await import('@mysten/sui/zklogin');
           suiAddress = jwtToAddress(idToken, BigInt(0));
           console.log('Fallback address:', suiAddress);
         }
