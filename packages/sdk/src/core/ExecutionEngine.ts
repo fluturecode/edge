@@ -1,4 +1,4 @@
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import {
   EdgePassObject,
@@ -63,12 +63,15 @@ function classifyError(error: unknown): { reason: string; code: EdgeErrorCode } 
 }
 
 export class ExecutionEngine {
-  private client: SuiClient;
+  private client: SuiJsonRpcClient;
   private network: Network;
 
   constructor(network: Network) {
     this.network = network;
-    this.client = new SuiClient({ url: NETWORK_URLS[network] });
+    this.client = new SuiJsonRpcClient({
+      url: NETWORK_URLS[network],
+      network: network as 'mainnet' | 'testnet' | 'devnet',
+    });
   }
 
   async execute(
@@ -94,9 +97,6 @@ export class ExecutionEngine {
       const result = await signer.signAndExecute(tx);
       return { status: 'approved', digest: result.digest, auto: true };
     } catch (error) {
-      // Distinguish infrastructure failures from policy rejections
-      // 'error' status means the transaction was NEVER submitted to chain
-      // 'blocked' status means the policy rejected it
       const { reason, code } = classifyError(error);
       return { status: 'error', reason, code, auto: false };
     }
@@ -123,23 +123,15 @@ export class ExecutionEngine {
         tx.object(pass.id),
         tx.pure.u64(request.amount),
         tx.pure.string(request.merchant),
-        tx.object('0x6'), // Sui shared Clock object
+        tx.object('0x6'),
       ],
     });
 
     return tx;
   }
 
-  /**
-   * Fetch a live EdgePass from Sui.
-   *
-   * Returns null if the object doesn't exist.
-   * Throws EdgePassError if the objectId is invalid or a network error occurs —
-   * so callers can distinguish "not found" from "broken".
-   */
   async fetchPass(objectId: string): Promise<EdgePassObject | null> {
 
-    // Validate objectId format before hitting the network
     if (!objectId || objectId.length < 10) {
       throw new Error(
         `EdgePass.fetch: invalid objectId "${objectId}". ` +
@@ -159,7 +151,6 @@ export class ExecutionEngine {
         options: { showContent: true },
       });
 
-      // Object exists but has no content — deleted or wrong type
       if (!obj.data?.content) {
         return null;
       }
@@ -173,8 +164,12 @@ export class ExecutionEngine {
 
       const fields = obj.data.content.fields as Record<string, any>;
 
-      // Validate required fields exist before accessing
-      const requiredFields = ['budget', 'auto_threshold', 'escalate_threshold', 'approved_merchants', 'owner', 'spent', 'active', 'created_at', 'expires_at'];
+      const requiredFields = [
+        'budget', 'auto_threshold', 'escalate_threshold',
+        'approved_merchants', 'owner', 'spent', 'active',
+        'created_at', 'expires_at',
+      ];
+
       for (const field of requiredFields) {
         if (fields[field] === undefined) {
           throw new Error(
@@ -201,12 +196,10 @@ export class ExecutionEngine {
       };
 
     } catch (error) {
-      // Re-throw our own errors as-is
       if (error instanceof Error && error.message.startsWith('EdgePass')) {
         throw error;
       }
 
-      // Wrap network/RPC errors with context
       const msg = error instanceof Error ? error.message : String(error);
       throw new Error(
         `EdgePass.fetch: network error fetching object ${objectId}. ` +
