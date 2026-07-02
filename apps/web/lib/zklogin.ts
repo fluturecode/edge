@@ -3,7 +3,7 @@ import { jwtToAddress, getZkLoginSignature } from '@mysten/sui/zklogin';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
 export function getZkLoginAddress(idToken: string): string {
-  return jwtToAddress(idToken, BigInt(0));
+  return jwtToAddress(idToken, BigInt(0), true);
 }
 
 export function getDecodedJwt(idToken: string) {
