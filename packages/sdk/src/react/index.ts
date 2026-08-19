@@ -8,6 +8,7 @@ import {
   SimulationResult,
   BudgetStatus,
   Network,
+  isV2,
 } from '../utils/types';
 
 export interface UseEdgePassConfig {
@@ -78,13 +79,14 @@ export function useEdgePass({
   const execute = useCallback(async (request: TransactionRequest): Promise<TransactionOutcome> => {
     if (!pass) throw new Error('EdgePass not loaded');
     if (!signer) throw new Error('No signer provided');
+    if (!isV2(pass)) throw new Error('EdgePass v1 is read-only — fetch, inspect, and revoke only. Execution requires a v2 pass.');
     const outcome = await sdkRef.current.execute(pass, request, signer);
     if (outcome.status === 'approved' && autoRefresh) await refresh();
     return outcome;
   }, [pass, signer, autoRefresh, refresh]);
 
   const simulate = useCallback((requests: TransactionRequest[]): SimulationResult | null => {
-    if (!pass) return null;
+    if (!pass || !isV2(pass)) return null;
     return sdkRef.current.simulate(pass, requests);
   }, [pass]);
 

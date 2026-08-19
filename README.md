@@ -7,13 +7,25 @@ EdgePass gives agents your rules, not your keys.
 [![Walrus Storage](https://img.shields.io/badge/storage-Walrus-teal)](https://walrus.xyz)
 [![npm version](https://img.shields.io/npm/v/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
 [![npm downloads](https://img.shields.io/npm/dw/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
-[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen)](https://github.com/fluturecode/edge)
+[![Tests](https://img.shields.io/badge/tests-39%20passing-brightgreen)](https://github.com/fluturecode/edge)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Sui Overflow](https://img.shields.io/badge/Sui%20Overflow-2026-blue)](https://overflow.sui.io)
 
 [Live Demo →](https://edge-web-cyan.vercel.app)  ·  [npm →](https://npmjs.com/package/@edge-protocol/sdk)  ·  [Contract →](https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde)  ·  [Docs →](packages/sdk/DOCS.md)
 
 *The best infrastructure is invisible.*
+
+---
+
+> ## ⚠️ Network status — read this before you mint anything
+>
+> **`edge_pass_v2` is deployed to Sui testnet only.** Mainnet cannot mint v2 passes yet — `sdk.create()` on mainnet throws rather than silently targeting a package that doesn't have the module. Use `network: 'testnet'` until v2 ships to mainnet.
+>
+> **New passes are always v2.** There is no v1 creation path in the 2.x SDK — `sdk.create()` only ever mints v2.
+>
+> **v1 passes are read-only in the 2.x SDK.** If you already hold a v1 pass (minted on mainnet before this release), you can still `fetch()`, inspect, and `revoke()` it — you cannot create a new one or spend against one.
+>
+> **`edge_pass.move` (v1) stays in this repo permanently.** It's not dead code left over from before v2 — real v1 passes exist on Sui mainnet today, and the SDK's `fetch()`/`revoke()` need that module's functions to keep working for them, indefinitely.
 
 ---
 
@@ -63,7 +75,7 @@ With Edge:
 pnpm add @edge-protocol/sdk
 ```
 ```typescript
-const pass = await sdk.create(EdgePass.fromTemplate('festival', { owner }), signer);
+const pass = await sdk.create(EdgePass.fromTemplate('festival', { agent }), signer);
 const outcome = await sdk.execute(pass, { merchant, amount }, signer);
 // ✅ policy enforced  ·  🗂 audit logged  ·  ✓ done
 ```
@@ -121,8 +133,9 @@ const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: 'YOUR_KEY' });
 
 const pass = await sdk.create(
   EdgePass.fromTemplate('festival', {
-    approvedMerchants: ['Shuttle Express', 'Hydra Bar', 'Stage Access VIP'],
-    owner: userAddress,
+    approvedMerchants: ['0xshuttle...', '0xhydrabar...', '0xstageaccess...'],
+    agent: agentAddress,   // spends against the pass — this key signs execute()
+    issuer: userAddress,   // grants/revokes — bookkeeping only, never sent on-chain
   }),
   signer
 );
@@ -132,8 +145,9 @@ const pass = await sdk.create(
 
 ```typescript
 const outcome = await sdk.execute(pass, {
-  merchant: 'Shuttle Express',
-  amount:   BigInt(18_500_000_000), // 18.5 SUI in MIST
+  merchant:      '0xshuttle...',        // address — must be in approvedMerchants
+  merchantLabel: 'Shuttle Express',     // display only, not enforced
+  amount:        BigInt(18_500_000_000), // 18.5 SUI in MIST
 }, signer);
 
 switch (outcome.status) {
@@ -200,13 +214,13 @@ const preview = sdk.validate(pass, { merchant, amount });
 
 ## 📋 Templates
 
-| Template | Budget | Auto ≤ | Escalate ≥ | Max/tx | Expiry |
-|----------|--------|--------|------------|--------|--------|
-| `festival` | 300 SUI | 50 SUI | 100 SUI | 200 SUI | 48h |
-| `gaming` | 50 SUI | 2 SUI | 10 SUI | 10 SUI | 4h |
-| `subscription` | 200 SUI | 20 SUI | 50 SUI | 50 SUI | 30d |
-| `defi` | 10,000 SUI | 500 SUI | 1,000 SUI | 2,000 SUI | 7d |
-| `enterprise` | 50,000 SUI | 1,000 SUI | 5,000 SUI | 10,000 SUI | 30d |
+| Template | Budget | Escalate ≥ | Max/tx | Expiry |
+|----------|--------|------------|--------|--------|
+| `festival` | 300 SUI | 50 SUI | 200 SUI | 48h |
+| `gaming` | 50 SUI | 2 SUI | 10 SUI | 4h |
+| `subscription` | 200 SUI | 20 SUI | 50 SUI | 30d |
+| `defi` | 10,000 SUI | 500 SUI | 2,000 SUI | 7d |
+| `enterprise` | 50,000 SUI | 1,000 SUI | 10,000 SUI | 30d |
 
 ---
 
@@ -221,9 +235,9 @@ Agent calls sdk.execute() — many times, autonomously
          ├─▶ 🔍 Layer 1 — TypeScript PolicyEngine
          │         Pure TypeScript · no network · <1ms
          │         ├─ active? expired? merchant in allowlist?
-         │         ├─ amount within budget? below maxPerTx?
-         │         ├─ amount > escalateThreshold? → ⚠️  escalate (agent pauses)
-         │         └─ amount ≤ autoThreshold?     → ✅ auto-approve
+         │         ├─ amount within budget? below maxPerTx? within velocity cap?
+         │         ├─ amount > escalateAbove? → ⚠️  escalate (agent pauses)
+         │         └─ amount ≤ escalateAbove? → ✅ auto-approve
          │         blocked/escalated NEVER touch the chain
          │
          ├─▶ ⚡ Layer 2 — Sui Move Contract (PTB, atomic)
@@ -286,17 +300,19 @@ sdk.validate()  →  TypeScript (instant preview, saves gas on rejections)
 sdk.execute()   →  TypeScript + Move contract (atomic, tamper-proof, final)
 ```
 
-The Move contract runs five assertions in the Sui VM before recording any spend:
+The Move contract runs six assertions, in order, in the Sui VM before recording any spend:
 
 ```move
 assert!(pass.active, EPassInactive);
-assert!(now <= pass.expires_at, EPassExpired);
-assert!(is_merchant_approved(pass, &merchant), EMerchantNotApproved);
+assert!(now <= pass.expires_at_ms, EPassExpired);
+assert!(ctx.sender() == pass.agent, ENotAgent);
+assert!(pass.approved_merchants.contains(&merchant), EMerchantNotApproved);
+assert!(amount <= pass.max_per_transaction, EExceedsMaxPerTransaction);
+assert!(pass.velocity_used + 1 <= pass.velocity_cap, EVelocityExceeded);  // skipped when velocity_cap == 0
 assert!(pass.spent + amount <= pass.budget, EBudgetExceeded);
-assert!(amount <= pass.escalate_threshold, EAmountExceedsEscalationThreshold);
 ```
 
-If any assertion fails, the entire transaction reverts. A compromised agent cannot bypass the contract. **The chain is the trust boundary.**
+Notice `escalateAbove` isn't in that list — escalation is an off-chain routing decision the SDK's `PolicyEngine` makes, not a refusal the contract can enforce. The chain only knows hard yes/no answers: active, in-scope, under the per-transaction ceiling, under the velocity cap, under budget. If any assertion fails, the entire transaction reverts. A compromised agent cannot bypass the contract. **The chain is the trust boundary.**
 
 ---
 
@@ -357,13 +373,14 @@ cd packages/sdk && pnpm test
 ```
 
 ```
-📋 PolicyEngine.validate()     10 tests ✓
-📋 PolicyEngine helpers         5 tests ✓
-📋 EdgePass.fromTemplate()      7 tests ✓
-📋 Constants                    5 tests ✓
-📋 Events system                7 tests ✓
+📋 PolicyEngine.validate()          11 tests ✓
+📋 PolicyEngine helpers              7 tests ✓
+📋 EdgePass.fromTemplate()           7 tests ✓
+📋 EdgePass.create() validation      2 tests ✓
+📋 Constants                         5 tests ✓
+📋 Events system                     7 tests ✓
 
-34 passed · 0 failed ✅
+39 passed · 0 failed ✅
 ```
 
 ---
@@ -378,7 +395,7 @@ cp apps/web/.env.example apps/web/.env.local
 # Add: NEXT_PUBLIC_ENOKI_API_KEY, NEXT_PUBLIC_GOOGLE_CLIENT_ID, ANTHROPIC_API_KEY, GOOGLE_API_KEY
 
 cd apps/web && pnpm dev       # → http://localhost:3000
-cd packages/sdk && pnpm test  # → 34 passing
+cd packages/sdk && pnpm test  # → 39 passing
 cd packages/sdk && pnpm build
 ```
 
@@ -405,20 +422,29 @@ edge/
 │       ├── zkp/route.ts             ZK proof generation via Enoki
 │       └── agent/route.ts           Claude/Gemini API for autonomous decisions
 │
-├── 📦 packages/sdk/                 @edge-protocol/sdk v0.9.x
+├── 📦 packages/sdk/                 @edge-protocol/sdk v2.0.0
 │   └── src/
 │       ├── core/
-│       │   ├── EdgePass.ts          Main API + simulate() + withPolicy()
-│       │   ├── PolicyEngine.ts      Validation + budget helpers (34 tests)
-│       │   └── ExecutionEngine.ts   PTB builder + chain execution
+│       │   ├── EdgePass.ts             Main API + events + simulate() + withPolicy()
+│       │   ├── PolicyEngine.ts         Validation + budget/velocity helpers (37 tests)
+│       │   ├── ExecutionEngine.ts      PTB builder + chain execution + fetch (v1 + v2)
+│       │   ├── IdempotencyRegistry.ts  Two-phase commit for createWithFireblocks()
+│       │   └── withFireblocks.ts       Hardened Fireblocks settlement HOF
+│       ├── compliance/
+│       │   ├── ComplianceEngine.ts         AML / sanctions / risk screening (6th dimension)
+│       │   └── DynamicIdentityBinding.ts   Binds passes to Dynamic enterprise identities
+│       ├── audit/
+│       │   └── WalrusAudit.ts           Real Walrus mainnet audit log storage
 │       ├── react/
 │       │   └── index.ts             useEdgePass, useBudgetStatus, useSimulate
 │       └── utils/
-│           ├── types.ts             All TypeScript types
+│           ├── types.ts             All TypeScript types (v1 read-only + v2 create/spend)
 │           └── constants.ts         Templates + Package IDs + MIST_PER_SUI
 │
 └── 📜 contracts/navis/
-    └── sources/edge_pass.move       ✅ Deployed to Sui mainnet
+    └── sources/
+        ├── edge_pass.move           v1 — deployed, read-only going forward
+        └── edge_pass_v2.move        ✅ current — issuer/agent split, velocity limits
 ```
 
 ---
@@ -429,7 +455,7 @@ edge/
 
 - ✅ zkLogin onboarding — invisible wallet from Google (salt derivation fixed)
 - ✅ EdgePass creation — real Move object on Sui mainnet
-- ✅ PolicyEngine — 34 tests, pure TypeScript
+- ✅ PolicyEngine — pure TypeScript, zero network
 - ✅ Two-layer enforcement — TypeScript preview + Move contract source of truth
 - ✅ Human-in-the-loop escalation — agent pauses, awaits human approval via modal
 - ✅ Events system — `on('approved')`, `on('escalated')`, `on('blocked')`
@@ -438,25 +464,31 @@ edge/
 - ✅ withPolicy() — wrap any AI tool with on-chain enforcement in one line
 - ✅ React hooks — `useEdgePass`, `useBudgetStatus`, `useSimulate`
 - ✅ 🤖 Live AI agent demo — Claude + Gemini, real autonomous decisions
-- ✅ 🔒 Seal policy serialization — encryption wired, network storage in v2
-- ✅ 🗂 Walrus architecture — audit log integration wired, real blobs in v2
+- ✅ 🔒 Seal policy serialization — encryption wired, network storage pending key server deployment
 - ✅ Move contract — deployed to Sui mainnet
-- ✅ SDK on npm — @edge-protocol/sdk v0.9.x
+- ✅ SDK on npm — @edge-protocol/sdk
 
-### Phase 2 — Trust Layer 🔨 in progress
+### Phase 2 — Trust Layer ✅ shipped
 
-- ⬜ Upgrade `@mysten/sui` to v2 — unlocks Walrus + Seal network storage
-- ⬜ Real Walrus blob storage — full decentralized audit trail
-- ⬜ Rolling time windows — `maxTransactionsPerHour`
-- ⬜ On-chain policy signatures — tamper-proof policy commitment
-- ⬜ Merchant address verification — verified Sui addresses on-chain
-- ⬜ Multi-token support — USDC, USDT, any Sui coin
-- ⬜ Tool-use architecture — agent decides one transaction at a time, sees results
+- ✅ **EdgePassV2** — issuer/agent separation: a human grants and revokes, an agent spends, neither can do the other's job
+- ✅ Merchant scope can only narrow, never widen, after minting — not even the issuer can add merchants back
+- ✅ Rolling velocity windows — `velocityCap` / `velocityWindowMs`, replaces the old `maxTransactionsPerHour` idea with an on-chain-enforced rate limit
+- ✅ Hard per-transaction ceiling (`maxPerTransaction`) — required and enforced on chain, not just advisory
+- ✅ On-chain denials — a `blocked` outcome can be recorded as an aborted transaction, so the refusal itself is independently verifiable on Suiscan
+- ✅ Approved merchants moved from display names to addresses — enforceable, not just cosmetic
+- ✅ Upgraded to `@mysten/sui` v2 + `@mysten/walrus` v1 — unblocked real Walrus storage
+- ✅ Real Walrus blob storage — the demo app writes to public mainnet publishers with a local mock fallback only if every publisher is unreachable
+- ✅ Two-Phase Commit / Idempotency — `createWithFireblocks()` with retry-safe `idempotencyKey`
+- ✅ Compliance Engine (6th dimension) — AML / sanctions / risk screening, pluggable providers
+- ✅ Dynamic Identity Binding — bind a pass to a Dynamic enterprise session via JWT
 
 ### Phase 3 — Protocol & Business 📋 coming
 
 - ⬜ Managed escalation dashboard — proprietary SaaS approval UI
-- ⬜ Enterprise guardrails — SOC2, SIEM, Fireblocks adapter
+- ⬜ On-chain policy signatures — tamper-proof policy commitment
+- ⬜ Multi-token support — USDC, USDT, any Sui coin
+- ⬜ Tool-use architecture — agent decides one transaction at a time, sees results
+- ⬜ Enterprise guardrails — SOC2, SIEM
 - ⬜ Cross-agent coordination — multi-agent quorum execution
 - ⬜ Intent-based policies — natural language → on-chain rules
 - ⬜ Cross-chain EdgePasses

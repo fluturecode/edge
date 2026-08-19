@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 import { buildSigner, getUserAddress } from '@/lib/signer';
+import { SUI_NETWORK, SUI_PACKAGE_ID_V2, assertV2Available } from '@/lib/sui-client';
+import { FESTIVAL_MERCHANTS } from '@/lib/merchants';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -13,8 +15,6 @@ const T = {
   white: '#FFFFFF', grey1: '#B8C8E0', grey2: '#5A7090',
 };
 
-const ALL_MERCHANTS = ['Shuttle Express', 'Festival Kitchen', 'Hydra Bar', 'Stage Access VIP', 'Official Merch'];
-const PACKAGE_ID = '0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde';
 const EXPIRY_OPTIONS = [24, 48, 72, 168];
 
 export default function CreatePass() {
@@ -24,7 +24,12 @@ export default function CreatePass() {
   const [autoThreshold, setAutoThreshold] = useState<number | ''>(50);
   const [escalateThreshold, setEscalateThreshold] = useState<number | ''>(100);
   const [expiry, setExpiry] = useState(48);
-  const [selectedMerchants, setSelectedMerchants] = useState<string[]>([...ALL_MERCHANTS]);
+  // Addresses, not names — v2's approvedMerchants is vector<address> on
+  // chain. FESTIVAL_MERCHANTS pairs each real address with the display
+  // label rendered below.
+  const [selectedMerchants, setSelectedMerchants] = useState<string[]>(
+    FESTIVAL_MERCHANTS.map(m => m.address)
+  );
 
   const [state, setState] = useState<'idle' | 'signing' | 'deploying' | 'storing' | 'done' | 'error'>('idle');
   const [visibleLines, setVisibleLines] = useState<number[]>([]);
@@ -35,14 +40,14 @@ export default function CreatePass() {
   const autoNum = Number(autoThreshold) || 0;
   const escalateNum = Number(escalateThreshold) || 0;
 
-  const toggleMerchant = (m: string) => {
+  const toggleMerchant = (address: string) => {
     setSelectedMerchants(prev =>
-      prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]
+      prev.includes(address) ? prev.filter(x => x !== address) : [...prev, address]
     );
   };
 
   const logSteps = [
-    { prefix: '$', color: T.grey2, text: 'edge create-pass --network mainnet', delay: 0 },
+    { prefix: '$', color: T.grey2, text: `edge create-pass --network ${SUI_NETWORK}`, delay: 0 },
     { prefix: '✓', color: T.teal, text: 'zkLogin session verified', delay: 400 },
     { prefix: '✓', color: T.teal, text: 'zkLogin signer ready · direct execution', delay: 800 },
     { prefix: '$', color: T.grey1, text: 'building PTB...', delay: 1300 },
@@ -52,7 +57,7 @@ export default function CreatePass() {
     { prefix: '→', color: T.grey2, text: 'escalate_threshold: ' + (escalateNum * 1_000_000_000) + ' MIST', delay: 2250, indent: true },
     { prefix: '→', color: T.grey2, text: 'expiry: ' + (expiry * 3_600_000) + 'ms · ' + selectedMerchants.length + ' merchants', delay: 2450, indent: true },
     { prefix: '✓', color: T.teal, text: 'PTB constructed · 2 transactions', delay: 2800 },
-    { prefix: '$', color: T.grey1, text: 'submitting to Sui mainnet...', delay: 3200 },
+    { prefix: '$', color: T.grey1, text: `submitting to Sui ${SUI_NETWORK}...`, delay: 3200 },
   ];
 
   const handleCreate = async () => {
@@ -61,6 +66,18 @@ export default function CreatePass() {
     if (autoNum >= escalateNum) { setErrorMsg('Auto-approve must be less than escalate threshold'); setState('error'); return; }
     if (escalateNum > budgetNum) { setErrorMsg('Escalate threshold cannot exceed budget'); setState('error'); return; }
     if (budgetNum <= 0) { setErrorMsg('Budget must be greater than 0'); setState('error'); return; }
+
+    // edge_pass_v2 (create()'s only path) isn't deployed on every network —
+    // fail here, before signing, with a clear message instead of letting
+    // sdk.create() throw deep inside ExecutionEngine after the user has
+    // already sat through a signing flow.
+    try {
+      assertV2Available(SUI_NETWORK);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Unknown error');
+      setState('error');
+      return;
+    }
 
     setState('signing');
     setVisibleLines([]);
@@ -75,17 +92,27 @@ export default function CreatePass() {
 
     try {
       const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
-      const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+      const sdk = new EdgePass({ network: SUI_NETWORK, enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
       const owner = getUserAddress();
       if (!owner) throw new Error('Not authenticated');
 
+      // v1 -> v2: v2 also requires a hard, on-chain-enforced
+      // `maxPerTransaction` ceiling with no UI equivalent yet; capping it at
+      // the full budget preserves the old "escalate, don't block" behavior
+      // for every amount this form can produce. `owner` becomes both
+      // `agent` (spends) and `issuer` (bookkeeping only — the real on-chain
+      // issuer is always the tx sender) since this demo wallet does both.
+      const budgetMist = BigInt(budgetNum) * MIST_PER_SUI;
       const pass = await sdk.create({
-        budget:            BigInt(budgetNum) * MIST_PER_SUI,
-        autoThreshold:     BigInt(autoNum) * MIST_PER_SUI,
-        escalateThreshold: BigInt(escalateNum) * MIST_PER_SUI,
+        agent:             owner,
+        issuer:            owner,
+        budget:            budgetMist,
+        escalateAbove:     BigInt(escalateNum) * MIST_PER_SUI,
+        maxPerTransaction: budgetMist,
+        velocityCap:       0,
+        velocityWindowMs:  0,
         approvedMerchants: selectedMerchants,
         expiryMs:          expiry * 60 * 60 * 1000,
-        owner,
       }, signer);
 
       setTxDigest(pass.id);
@@ -114,8 +141,8 @@ export default function CreatePass() {
         budget: budgetNum, autoThreshold: autoNum, escalateThreshold: escalateNum, expiry,
         merchants: selectedMerchants,
         id: pass.id,
-        packageId: PACKAGE_ID,
-        network: 'mainnet',
+        packageId: SUI_PACKAGE_ID_V2,
+        network: SUI_NETWORK,
         spent: 0,
         active: true,
         createdAt: Date.now(),
@@ -278,12 +305,12 @@ export default function CreatePass() {
                 Approved Merchants <span style={{ color: T.grey2, fontWeight: 400 }}>({selectedMerchants.length} selected)</span>
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {ALL_MERCHANTS.map(m => {
-                  const selected = selectedMerchants.includes(m);
+                {FESTIVAL_MERCHANTS.map(m => {
+                  const selected = selectedMerchants.includes(m.address);
                   return (
                     <button
-                      key={m}
-                      onClick={() => toggleMerchant(m)}
+                      key={m.address}
+                      onClick={() => toggleMerchant(m.address)}
                       style={{
                         background: selected ? T.tealDim : T.bgCard,
                         border: '1px solid ' + (selected ? T.tealBorder : T.border),
@@ -293,7 +320,7 @@ export default function CreatePass() {
                         transition: 'all 0.15s',
                       }}
                     >
-                      {selected ? '✓ ' : ''}{m}
+                      {selected ? '✓ ' : ''}{m.label}
                     </button>
                   );
                 })}
@@ -347,7 +374,7 @@ export default function CreatePass() {
           </button>
 
           <p style={{ textAlign: 'center', color: T.grey2, fontSize: 11, margin: 0, fontFamily: 'DM Mono, monospace' }}>
-            zkLogin verified · PTB atomic execution · Sui mainnet
+            zkLogin verified · PTB atomic execution · Sui {SUI_NETWORK}
           </p>
         </div>
       </div>

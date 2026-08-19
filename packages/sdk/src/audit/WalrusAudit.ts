@@ -1,5 +1,5 @@
 import { WalrusClient, MAINNET_WALRUS_PACKAGE_CONFIG, TESTNET_WALRUS_PACKAGE_CONFIG } from '@mysten/walrus';
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { Signer } from '@mysten/sui/cryptography';
 import { NETWORK_URLS } from '../utils/constants';
 import type { Network } from '../utils/types';
@@ -59,9 +59,9 @@ export class WalrusAudit {
   constructor(network: Network) {
     this.network = network;
 
-    const suiClient = new SuiJsonRpcClient({
-      url: NETWORK_URLS[network],
+    const suiClient = new SuiGrpcClient({
       network: network as 'mainnet' | 'testnet' | 'devnet',
+      baseUrl: NETWORK_URLS[network],
     });
 
     this.walrus = new WalrusClient({

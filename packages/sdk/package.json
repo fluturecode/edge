@@ -1,7 +1,8 @@
 {
   "name": "@edge-protocol/sdk",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Programmable trust infrastructure for autonomous AI agents on Sui. Give agents your rules, not your keys.",
+  "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -18,7 +19,8 @@
     "dist",
     "README.md",
     "DOCS.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",

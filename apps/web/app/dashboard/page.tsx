@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getZkLoginAddress, getDecodedJwt } from '@/lib/zklogin';
+import { SUI_NETWORK, suiscanUrl } from '@/lib/sui-client';
+import { FESTIVAL_MERCHANTS, findMerchantByAddress } from '@/lib/merchants';
+import type { Network } from '@edge-protocol/sdk';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -55,6 +58,10 @@ export default function Dashboard() {
   }, []);
 
   const pass = passes[0];
+  // A pass created earlier under a different NEXT_PUBLIC_SUI_NETWORK (still
+  // sitting in localStorage) should link against the network it was actually
+  // minted on, not whatever the app is configured for now.
+  const passNetwork: Network = (pass?.network as Network | undefined) ?? SUI_NETWORK;
 
   return (
     <main style={{ background: T.bg, minHeight: 'calc(100vh - 57px)', padding: 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 24px)' }}>
@@ -103,9 +110,9 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 10, color: T.grey2, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'DM Mono, monospace' }}>
-                    EdgePass · {pass.network === 'mainnet' ? 'Mainnet' : 'Mainnet'}
+                    EdgePass · {passNetwork}
                   </div>
-                  <a href={`https://suiscan.xyz/mainnet/object/${pass.id}`} target="_blank" rel="noopener noreferrer"
+                  <a href={suiscanUrl('object', pass.id, passNetwork)} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: T.blue, textDecoration: 'none' }}>
                     {pass.id.slice(0, 10)}...{pass.id.slice(-8)} ↗
                   </a>
@@ -137,8 +144,14 @@ export default function Dashboard() {
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, color: T.grey2, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, fontFamily: 'DM Mono, monospace' }}>Approved Merchants</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {/* pass.merchants holds addresses (approvedMerchants is
+                      vector<address> on chain) — look up the display label,
+                      falling back to the raw address for anything not in
+                      this demo's directory. */}
                   {(pass.merchants || []).map((m: string) => (
-                    <span key={m} style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '3px 8px', borderRadius: 5 }}>{m}</span>
+                    <span key={m} style={{ background: T.tealDim, border: `1px solid ${T.tealBorder}`, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '3px 8px', borderRadius: 5 }}>
+                      {findMerchantByAddress(FESTIVAL_MERCHANTS, m)?.label ?? m}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -147,12 +160,12 @@ export default function Dashboard() {
               {pass.packageId && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: T.grey2, fontFamily: 'DM Mono, monospace' }}>contract:</span>
-                  <a href={`https://suiscan.xyz/mainnet/object/${pass.packageId}`} target="_blank" rel="noopener noreferrer"
+                  <a href={suiscanUrl('object', pass.packageId, passNetwork)} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: T.grey2, textDecoration: 'none' }}>
                     {pass.packageId.slice(0, 10)}...{pass.packageId.slice(-8)} ↗
                   </a>
                   <span style={{ background: T.blueDim, border: `1px solid ${T.blueBorder}`, color: T.blue, fontSize: 10, fontFamily: 'DM Mono, monospace', padding: '2px 8px', borderRadius: 4 }}>
-                    mainnet
+                    {passNetwork}
                   </span>
                 </div>
               )}

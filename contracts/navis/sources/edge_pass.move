@@ -1,3 +1,14 @@
+/// EdgePass v1 — superseded by `edge_pass_v2`, but not deprecated dead code.
+///
+/// This module stays in the repo permanently. v1 passes were minted on Sui
+/// mainnet before v2 existed, and they're real, live objects that agents and
+/// issuers still depend on — removing this module would strand every one of
+/// them with no way to `fetch`, inspect, or `revoke_pass`. The SDK's
+/// `create()` no longer targets this module (there is no v1 creation path),
+/// but `fetch()`/`revoke()` still route here for any v1 object ID for as
+/// long as those objects exist on chain.
+///
+/// See `edge_pass_v2.move`'s header for what changed and why v2 exists.
 module navis::edge_pass {
     use sui::object::{Self, UID};
     use sui::transfer;

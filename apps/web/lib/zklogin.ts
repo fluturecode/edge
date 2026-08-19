@@ -1,6 +1,7 @@
 import { jwtDecode } from 'jwt-decode';
 import { jwtToAddress, getZkLoginSignature } from '@mysten/sui/zklogin';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { SUI_NETWORK } from './sui-client';
 
 export function getZkLoginAddress(idToken: string): string {
   return jwtToAddress(idToken, BigInt(0), true);
@@ -38,7 +39,12 @@ export async function generateZkProof({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      network:            'mainnet',
+      // Was hardcoded to 'mainnet'. Enoki's prover needs to know which
+      // network the resulting proof will be submitted to; v2 (the only pass
+      // type this app creates/executes) only exists on testnet, so a proof
+      // generated for the wrong network fails verification whenever
+      // SUI_NETWORK isn't mainnet.
+      network:            SUI_NETWORK,
       ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
       maxEpoch,
       randomness:         randomness.toString(),

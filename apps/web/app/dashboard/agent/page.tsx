@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { EdgePass } from '@edge-protocol/sdk';
+import { EdgePass, isV2 } from '@edge-protocol/sdk';
 import { buildSigner, getUserAddress } from '@/lib/signer';
 import { writeAuditLogs, walrusExplorerUrl, AuditLogEntry } from '@/lib/walrus';
+import { SUI_NETWORK, suiscanUrl, assertV2Available } from '@/lib/sui-client';
+import { FESTIVAL_MERCHANTS, DEFI_MERCHANTS, resolveMerchant } from '@/lib/merchants';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -134,7 +136,7 @@ function ReceiptCard({ outcomes, scenario, model, walrusBlobId, walrusLoading }:
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {tx.digest && (
-                    <a href={'https://suiscan.xyz/mainnet/tx/' + tx.digest} target="_blank" rel="noopener noreferrer"
+                    <a href={suiscanUrl('tx', tx.digest)} target="_blank" rel="noopener noreferrer"
                       style={{ fontSize: 9, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none' }}>
                       {tx.digest.slice(0, 6) + '...↗'}
                     </a>
@@ -249,7 +251,7 @@ function EscalationModal({ step, onApprove, onReject }: {
           </div>
           <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#B8C8E0' }}>{step.reasoning}</div>
           <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#5A7090', marginTop: 8 }}>
-            Your agent hit its limit and is asking for permission. Approve to execute on Sui mainnet.
+            Your agent hit its limit and is asking for permission. Approve to execute on Sui {SUI_NETWORK}.
           </div>
         </div>
 
@@ -387,12 +389,19 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       setRunning(false); return;
     }
 
-    addMessage({ type: 'system', text: `Edge Agent v1.0 · Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
+    try {
+      assertV2Available(SUI_NETWORK);
+    } catch (e) {
+      addMessage({ type: 'system', text: e instanceof Error ? e.message : 'Unknown error' });
+      setRunning(false); return;
+    }
+
+    addMessage({ type: 'system', text: `Edge Agent · Budget: $${BUDGET} · Auto: <$${AUTO_THRESHOLD} · Escalate: >$${ESCALATE_THRESHOLD}` });
     addMessage({ type: 'system', text: `Consulting ${modelInfo.label}...` });
 
     setLoadingDecisions(true);
 
-    const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
+    const sdk = new EdgePass({ network: SUI_NETWORK, enokiApiKey: process.env.NEXT_PUBLIC_ENOKI_API_KEY! });
     const signer = buildSigner(process.env.NEXT_PUBLIC_ENOKI_API_KEY!);
     let currentSpent = 0, approvedCount = 0;
 
@@ -423,7 +432,12 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       try {
         const passObj = await sdk.fetch(passId);
         if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass.' }); return; }
-        const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
+        if (!isV2(passObj)) { addMessage({ type: 'system', text: 'This EdgePass is a v1 pass and cannot execute — recreate it as v2.' }); return; }
+        // approvedMerchants/merchant are addresses on chain — step.merchant
+        // is the display label the LLM/fallback decisions reason in, so
+        // resolve it to a real address before this reaches the SDK.
+        const { address: merchantAddress, label: merchantLabel } = resolveMerchant(scenario, step.merchant);
+        const outcome = await sdk.execute(passObj, { merchant: merchantAddress, merchantLabel, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
           setSpent(currentSpent); setTxCount(approvedCount);
@@ -432,6 +446,16 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
           await new Promise(r => setTimeout(r, 2000));
+        } else if (outcome.status === 'escalated') {
+          // sdk.execute() has no resolve/override path for a transaction a
+          // human has already approved — escalation is notify-only in
+          // 2.0.0 (see packages/sdk/DOCS.md's Security Model). Calling
+          // execute() again after approval just returns 'escalated' a
+          // second time with nothing submitted. Say so explicitly instead
+          // of silently doing nothing, which is what happened here before
+          // this fix — a human clicking Approve deserves to know it didn't
+          // actually go through.
+          addMessage({ type: 'system', text: `Approval flows aren't implemented yet — nothing was submitted for ${step.merchant}. Escalation is notify-only in this SDK version; a resolve-after-approval path is planned for 2.1.` });
         } else if (outcome.status === 'error') {
           addMessage({ type: 'system', text: 'Transaction failed — continuing' });
         }
@@ -447,23 +471,48 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
       addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
 
+      // v1 -> v2: this mock pass used to nest everything under `config` and
+      // enforce escalation via `escalateThreshold`. v2 objects are flattened
+      // (no `config`) and the field is now `escalateAbove` — ESCALATE_THRESHOLD
+      // maps there. AUTO_THRESHOLD (v1's "auto-approve under") was
+      // display-only even in v1's PolicyEngine, so it's still only used for
+      // the system message above, not sent into the pass. `maxPerTransaction`
+      // is new in v2 and hard-blocks (rather than escalates) above it on
+      // chain; capped at BUDGET here since this mock has no separate
+      // hard-cap concept.
+      //
+      // approvedMerchants is addresses on chain, not the display names
+      // config.merchants holds — resolve step.merchant (a label) to its
+      // real address the same way executeOnChain() does, so this local
+      // preview agrees with what execute() will actually enforce.
+      const { address: merchantAddress, label: merchantLabel } = resolveMerchant(scenario, step.merchant);
+      const approvedAddresses = (scenario === 'festival' ? FESTIVAL_MERCHANTS : DEFI_MERCHANTS).map(m => m.address);
       const localValidation = sdk.validate(
         {
+          version: 'v2',
           id: passId,
-          config: {
-            budget: BigInt(Math.round(BUDGET * 1_000_000_000)),
-            autoThreshold: BigInt(Math.round(AUTO_THRESHOLD * 1_000_000_000)),
-            escalateThreshold: BigInt(Math.round(ESCALATE_THRESHOLD * 1_000_000_000)),
-            approvedMerchants: config.merchants.slice(0, -1),
-            expiryMs: 48 * 60 * 60 * 1000,
-            owner,
-          },
+          // Not a real chain read — this mock object is only ever passed to
+          // sdk.validate(), which is pure client-side PolicyEngine logic and
+          // never looks at initialSharedVersion (that's only needed to build
+          // a real moveCall in execute()/revoke()). Satisfies the type
+          // without pretending this came from a real fetch().
+          initialSharedVersion: '0',
+          issuer: owner,
+          agent: owner,
+          budget: BigInt(Math.round(BUDGET * 1_000_000_000)),
+          escalateAbove: BigInt(Math.round(ESCALATE_THRESHOLD * 1_000_000_000)),
+          maxPerTransaction: BigInt(Math.round(BUDGET * 1_000_000_000)),
+          velocityCap: 0,
+          velocityUsed: 0,
+          windowMs: 0,
+          windowStartMs: Date.now() - 1000,
+          approvedMerchants: approvedAddresses,
           spent: BigInt(Math.round(currentSpent * 1_000_000_000)),
           active: true,
           createdAt: Date.now() - 1000,
           expiresAt: Date.now() + 48 * 60 * 60 * 1000,
         },
-        { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }
+        { merchant: merchantAddress, merchantLabel, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }
       );
 
       if (!localValidation.allowed) {
@@ -579,7 +628,7 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
             {loadingDecisions
               ? `→ consulting ${modelInfo.label.toLowerCase()}...`
               : running
-              ? '→ executing decisions against your EdgePass on Sui mainnet'
+              ? `→ executing decisions against your EdgePass on Sui ${SUI_NETWORK}`
               : done
               ? '✓ agent completed — receipt below'
               : 'The AI decides. EdgePass enforces. The chain is the guarantee.'}
@@ -635,7 +684,7 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
                 {modelInfo.label}
               </span>
               <span style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, color: T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 6 }}>
-                MAINNET
+                {SUI_NETWORK.toUpperCase()}
               </span>
             </div>
           )}
@@ -713,15 +762,15 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
                 )}
                 {msg.type === 'outcome' && msg.status === 'approved' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {/* Edge approval — Sui mainnet */}
+                    {/* Edge approval — network-labeled below, driven by SUI_NETWORK */}
                     <div style={{ background: T.tealDim, border: '1px solid ' + T.tealBorder, borderRadius: 8, padding: '10px 12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontSize: 10, color: T.teal, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>APPROVED ON-CHAIN · SUI MAINNET</div>
+                          <div style={{ fontSize: 10, color: T.teal, fontFamily: 'DM Mono, monospace', marginBottom: 3, letterSpacing: '0.06em' }}>APPROVED ON-CHAIN · SUI {SUI_NETWORK.toUpperCase()}</div>
                           <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif' }}>{msg.merchant} · ${msg.amount?.toFixed(2)}</div>
                         </div>
                         {msg.digest && (
-                          <a href={'https://suiscan.xyz/mainnet/tx/' + msg.digest} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
+                          <a href={suiscanUrl('tx', msg.digest)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: T.blue, fontFamily: 'DM Mono, monospace', textDecoration: 'none', flexShrink: 0 }}>
                             {msg.digest.slice(0, 8) + '...↗'}
                           </a>
                         )}

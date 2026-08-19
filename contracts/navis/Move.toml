@@ -4,7 +4,7 @@ edition = "2024.beta"
 version = "0.0.1"
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "0a9aa917aabeb5a6f64b822a075206440b4db3dc" }
 
 [addresses]
 navis = "0x0"
