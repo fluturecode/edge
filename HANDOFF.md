@@ -1,12 +1,12 @@
-# Edge — Complete Project Handoff v3
-*Last updated: June 22, 2026 — post-submission*
-*Hours invested: ~60 hours total*
+# Edge — Complete Project Handoff v4
+*Last updated: August 19, 2026 — EdgePassV2 migration*
+*Hours invested: ~60 hours total (pre-v4 update)*
 
 ---
 
 ## New Chat Prompt
 
-> I'm building Edge Protocol — programmable trust infrastructure for autonomous AI agents on Sui. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@0.9.2. Submitted to Sui Overflow 2026 on June 21. Read HANDOFF.md before continuing.
+> I'm building Edge Protocol — programmable trust infrastructure for autonomous AI agents on Sui. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@1.0.0 (EdgePassV2 — issuer/agent separation, velocity limits, on-chain denials). Submitted to Sui Overflow 2026 on June 21. Read HANDOFF.md before continuing.
 
 ---
 
@@ -42,17 +42,20 @@ Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98
 
 ---
 
-## SDK v0.9.2 — Full API Surface
+## SDK v1.0.0 — Full API Surface
+
+**EdgePassV2 (current, the only creation path)** — issuer/agent separation: `issuer` grants/revokes, `agent` spends, neither can do the other's job. `escalateAbove` replaces v1's `escalateThreshold` (see "v1 → v2 gotcha" below — do not confuse with v1's dead `autoThreshold`). `maxPerTransaction` is now required and hard-enforced on chain. New `velocityCap`/`velocityWindowMs` rolling rate limit, enforced on chain. `approvedMerchants` is addresses now, not display names. v1 passes remain fetchable/inspectable/revocable but there's no v1 creation path anymore.
 
 **Core:**
-- `sdk.create(config, signer)` — mint EdgePass on Sui
-- `sdk.execute(pass, request, signer)` — returns approved/blocked/escalated/error
-- `sdk.validate(pass, request)` — zero network, <1ms preview
+- `sdk.create(config, signer)` — mint EdgePassV2 on Sui. Config: `{ agent, issuer?, budget, escalateAbove, maxPerTransaction, velocityCap, velocityWindowMs, approvedMerchants, expiryMs }`
+- `sdk.execute(pass, request, signer)` — requires `EdgePassObjectV2`; returns approved/blocked/escalated/error. `blocked` can carry `digest`/`abortCode` if `onChainDenials` (default on) recorded the denial as an aborted tx
+- `sdk.validate(pass, request)` — requires `EdgePassObjectV2`; zero network, <1ms preview
 - `sdk.simulate(pass, requests[])` — predict full session, zero network
-- `sdk.fetch(objectId)` — get live pass from chain
-- `sdk.revoke(pass, signer)` — revoke on-chain
+- `sdk.fetch(objectId)` — get live pass from chain, `EdgePassObjectV1 | EdgePassObjectV2` — narrow with `isV2()` before execute/validate
+- `sdk.revoke(pass, signer)` — revoke on-chain, works on either version
 
-**Budget helpers:**
+**Budget & velocity helpers:**
+- `sdk.velocityStatus(pass)` — cap/used/remaining/windowResetsAt/isExhausted/isUnlimited
 - `sdk.budgetStatus(pass)` — full snapshot
 - `sdk.utilizationPct(pass)` — 0-100
 - `sdk.isNearLimit(pass, threshold?)` — default 80%
@@ -61,7 +64,7 @@ Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98
 - `sdk.isExpiringSoon(pass, withinMs?)` — default 1hr
 
 **Static:**
-- `EdgePass.fromTemplate(template, overrides)` — 5 templates
+- `EdgePass.fromTemplate(template, overrides)` — 6 templates (added `x402`), `overrides` now needs `{ agent: string }`
 - `EdgePass.withPolicy(pass, signer, sdk, fn)` — HOF for AI tools
 
 **Events:**
@@ -72,7 +75,11 @@ Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98
 - `useBudgetStatus` — lightweight
 - `useSimulate` — reactive
 
-**34 passing tests.**
+**v1.0.0 enterprise hardening (see `packages/sdk/README.md` "What's New"):** `createWithFireblocks()` idempotency, `ComplianceEngine` (6th dimension), `DynamicIdentityBinding`, real `WalrusAudit` mainnet storage.
+
+**39 passing tests** (was 34 before EdgePassV2 — added `maxPerTransaction`/velocity coverage and 2 tests asserting `create()` throws on a stray v1 `escalateThreshold`/`autoThreshold` key).
+
+**v1 → v2 gotcha, if you're touching config code:** v1's `escalateThreshold` (the field that actually drove escalation) maps to v2's `escalateAbove`. v1's `autoThreshold` was dead in v1 (never enforced) and has no v2 equivalent — don't carry it over. Full writeup: `packages/sdk/DOCS.md` → "v1 → v2 Migration Notes".
 
 ---
 
@@ -85,21 +92,30 @@ Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98
 **zkLogin salt** — must fetch from Enoki `/v1/zklogin` GET. Never hardcode `BigInt(0)` — gives wrong address. This is the most common zkLogin bug.
 
 **Two-layer enforcement:**
-- Layer 1: TypeScript PolicyEngine — <1ms, zero network, blocked/escalated never touch chain
-- Layer 2: Move contract — five assertions in Sui VM, cannot be bypassed
+- Layer 1: TypeScript PolicyEngine — <1ms, zero network, blocked/escalated never touch chain (unless `onChainDenials` records the denial)
+- Layer 2: Move contract (`edge_pass_v2`) — six assertions in Sui VM, cannot be bypassed: active, expired, `ENotAgent` (sender must be `pass.agent`), merchant approved, `maxPerTransaction`, velocity cap, budget
 
-**Blocked/escalated** validated locally — never submitted to chain, no gas wasted.
+**Blocked/escalated** validated locally by default — never submitted to chain unless `onChainDenials` is on (default `true` as of v2), in which case `blocked` submits an aborting tx so the denial is independently verifiable.
 
 ---
 
 ## Contract Field Names
 
+**v2 (`edge_pass_v2`, current):**
+```
+budget, auto_threshold, max_per_transaction, velocity_cap, velocity_used,
+window_ms, window_start_ms, approved_merchants, issuer, agent, spent,
+active, created_at_ms, expires_at_ms
+```
+Note: on chain the field is still `auto_threshold` — the SDK maps it to `escalateAbove` on the TS object (`ExecutionEngine.fetchPass()`). If you're reading the object directly via RPC/explorer instead of through the SDK, you'll see `auto_threshold`, not `escalateAbove`.
+
+**v1 (`edge_pass`, read-only going forward):**
 ```
 budget, auto_threshold, escalate_threshold, approved_merchants,
 owner, spent, active, created_at, expires_at
 ```
 
-Note: `expiry_ms` does NOT exist on-chain. SDK calculates: `expiryMs = expires_at - created_at`
+Note: `expiry_ms` does NOT exist on-chain in either version. SDK calculates: `expiryMs = expires_at(_ms) - created_at(_ms)`.
 
 ---
 
@@ -125,16 +141,19 @@ Note: `expiry_ms` does NOT exist on-chain. SDK calculates: `expiryMs = expires_a
 ## What's Real vs Mocked
 
 **Real:**
-- Move contract on Sui mainnet with verifiable digests
+- Move contract on Sui mainnet with verifiable digests — now `edge_pass_v2` for new passes, `edge_pass` (v1) remains for existing ones
 - zkLogin wallet derivation (salt fix applied)
 - Enoki gas sponsorship
 - Claude + Gemini inference
 - Seal policy serialization fires in console
 - SDK on npm with 3,500+ weekly downloads
+- `@mysten/sui` v2 upgrade — done, both `apps/web` and `packages/sdk` are on `^2.20.1`
+- Walrus writes — `apps/web/app/api/walrus/route.ts` writes to real public mainnet publishers (`walrus-mainnet-publisher.nami.cloud`, `staketab.org`) first; only falls back to a `local-{timestamp}` mock blob ID if every publisher is unreachable. The SDK also ships its own `WalrusAudit` class for direct mainnet writes/reads (`packages/sdk/src/audit/WalrusAudit.ts`) — the app doesn't use it yet, it still goes through its own `lib/walrus.ts` + `/api/walrus` proxy
 
 **Mocked:**
-- Walrus audit blob IDs — `local-{timestamp}` — blocked on `@mysten/sui` v2 upgrade
-- `@mysten/walrus` requires `@mysten/sui@^2.x`, app is on `1.30.x`
+- Seal network storage — still console-only, pending key server deployment (unrelated to the v2 upgrade, this was never blocked on `@mysten/sui`)
+
+**Worth knowing, not mocked:** `apps/web` never sets `onChainDenials` in its `new EdgePass({...})` calls, so the SDK's default (`true`) applies — `blocked` outcomes from the agent demo are already being recorded on-chain as aborted transactions, not just decided client-side. If a future demo wants to show *unverifiable* client-side-only blocking for contrast, that now needs an explicit `onChainDenials: false`.
 
 ---
 
@@ -162,11 +181,11 @@ GOOGLE_API_KEY — paid tier required, gemini-2.5-flash
 
 ## v1.0.0 Roadmap
 
-1. Upgrade `@mysten/sui` to v2 — unlocks `@mysten/walrus` + `@mysten/seal` network storage
-2. Real Walrus blob storage — full decentralized audit trail
-3. Retry logic in ExecutionEngine on VERSION_CONFLICT
-4. `maxTransactionsPerHour` rolling window in PolicyEngine
-5. Publish v1.0.0
+1. ✅ Upgrade `@mysten/sui` to v2 — unlocks `@mysten/walrus` + `@mysten/seal` network storage
+2. ✅ Real Walrus blob storage — `apps/web`'s `/api/walrus` writes to real publishers now (mock is fallback-only); SDK's `WalrusAudit` gives full decentralized audit trail, not yet wired into the app
+3. ⬜ Retry logic in ExecutionEngine on VERSION_CONFLICT — still not implemented, checked in `ExecutionEngine.ts`
+4. ✅ Rolling rate-limit window in PolicyEngine — shipped as `velocityCap`/`velocityWindowMs` in EdgePassV2, not the originally-planned `maxTransactionsPerHour` shape but the same purpose
+5. ⚠️ Publish v1.0.0 — `package.json` is at `1.0.0` and `packages/sdk/README.md` documents a "What's New in v1.0.0" section, but `packages/sdk/CHANGELOG.md`'s latest entry is still `[0.8.0]` — the 1.0.0 changelog entry (which should also cover EdgePassV2) hasn't been written yet. Confirm on npm whether `1.0.0` is actually published before telling anyone it is.
 
 ---
 
@@ -189,21 +208,24 @@ apps/web/app/dashboard/page.tsx          — dashboard
 apps/web/app/dashboard/create/page.tsx   — EdgePass creation
 apps/web/app/dashboard/agent/page.tsx    — AI agent demo
 apps/web/lib/signer.ts                   — zkLogin signer, gas coin resolution
-apps/web/lib/walrus.ts                   — Walrus HTTP API (mock proxy)
+apps/web/lib/walrus.ts                   — Walrus HTTP API (real publishers, mock fallback)
 apps/web/lib/seal.ts                     — Seal policy encryption
 apps/web/app/api/sign/route.ts           — transaction signing
-apps/web/app/api/walrus/route.ts         — Walrus write proxy
+apps/web/app/api/walrus/route.ts         — Walrus write proxy (real publishers, mock fallback)
 apps/web/app/api/zkp/route.ts            — ZK proof via Enoki
 apps/web/app/api/agent/route.ts          — Claude/Gemini API (edge runtime)
-packages/sdk/src/core/EdgePass.ts        — main API + events + simulate + withPolicy
-packages/sdk/src/core/PolicyEngine.ts    — validation + budget helpers (34 tests)
-packages/sdk/src/core/ExecutionEngine.ts — PTB builder + error handling
+packages/sdk/src/core/EdgePass.ts        — main API + events + simulate + withPolicy + v1 legacy-key guard
+packages/sdk/src/core/PolicyEngine.ts    — v2 validation + budget/velocity helpers
+packages/sdk/src/core/ExecutionEngine.ts — PTB builder + v1/v2 fetch + on-chain denials
+packages/sdk/src/compliance/            — ComplianceEngine (6th dimension) + DynamicIdentityBinding
+packages/sdk/src/audit/WalrusAudit.ts    — real Walrus mainnet audit storage (not yet used by apps/web)
 packages/sdk/src/react/index.ts          — useEdgePass, useBudgetStatus, useSimulate
-packages/sdk/src/utils/types.ts          — all TypeScript types
+packages/sdk/src/utils/types.ts          — all TypeScript types (v1 read-only + v2 create/spend)
 packages/sdk/src/utils/constants.ts      — templates + Package IDs + MIST_PER_SUI
-packages/sdk/src/test.ts                 — 34 comprehensive tests
-packages/sdk/CHANGELOG.md               — version history
-packages/sdk/DOCS.md                     — full developer reference
+packages/sdk/src/test.ts                 — 39 comprehensive tests (async-aware runner as of the v2 migration)
+packages/sdk/CHANGELOG.md               — version history (currently behind package.json — see Roadmap)
+packages/sdk/DOCS.md                     — full developer reference, incl. "v1 → v2 Migration Notes"
+contracts/navis/sources/edge_pass_v2.move — current Move contract
 packages/sdk/README.md                   — SDK README
 README.md                                — root repo README
 ```

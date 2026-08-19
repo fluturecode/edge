@@ -47,8 +47,8 @@ export class PolicyEngine {
       return { allowed: false, requiresEscalation: false, reason: `Insufficient budget. Remaining: ${remaining} MIST` };
     }
 
-    if (request.amount > pass.autoThreshold) {
-      return { allowed: true, requiresEscalation: true, reason: `Amount exceeds auto threshold of ${pass.autoThreshold} MIST` };
+    if (request.amount > pass.escalateAbove) {
+      return { allowed: true, requiresEscalation: true, reason: `Amount exceeds escalation threshold of ${pass.escalateAbove} MIST` };
     }
 
     return { allowed: true, requiresEscalation: false, reason: 'Auto-approved' };

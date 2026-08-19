@@ -15,7 +15,7 @@ export interface EdgePassConfig {
   issuer?: string;
   budget: bigint;
   /** Off-chain escalation routing. NOT enforced on chain. */
-  autoThreshold: bigint;
+  escalateAbove: bigint;
   /** Hard per-transaction ceiling. Enforced on chain. */
   maxPerTransaction: bigint;
   /**
@@ -61,8 +61,14 @@ export interface EdgePassObjectV2 {
   /** Spends. May not revoke, may not change anything. */
   agent: string;
   budget: bigint;
-  /** Off-chain escalation routing. NOT enforced on chain. */
-  autoThreshold: bigint;
+  /**
+   * Off-chain escalation routing. NOT enforced on chain — renamed from
+   * `autoThreshold` because v1's `autoThreshold` was dead (display-only,
+   * never enforced) while this field is the one that actually drives
+   * escalation. Same name, different meaning across versions was a
+   * silent-failure trap for anyone porting a v1 value straight across.
+   */
+  escalateAbove: bigint;
   /** Hard per-transaction ceiling. Enforced on chain. */
   maxPerTransaction: bigint;
   /**

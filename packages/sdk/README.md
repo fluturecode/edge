@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
 [![npm downloads](https://img.shields.io/npm/dw/@edge-protocol/sdk)](https://npmjs.com/package/@edge-protocol/sdk)
-[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen)](https://github.com/fluturecode/edge)
+[![Tests](https://img.shields.io/badge/tests-39%20passing-brightgreen)](https://github.com/fluturecode/edge)
 [![Built on Sui](https://img.shields.io/badge/built%20on-Sui-blue)](https://sui.io)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -24,7 +24,9 @@ EdgePass is the policy layer — scoped, programmatic spend authority issued dir
 
 **Upgraded to `@mysten/sui` v2.20.1 and `@mysten/walrus` v1.2.3.**
 
-Four enterprise hardening upgrades:
+**EdgePassV2 — issuer/agent separation.** The pass is shared, not owned: an `issuer` grants and revokes but cannot spend, an `agent` spends but cannot revoke or change anything, and neither can do the other's job. Scope can only narrow after minting — there's no `add_merchant`, by design, not even for the issuer. Adds a rolling `velocityCap` / `velocityWindowMs` rate limit (a budget caps *how much*, not *how fast*) and a hard, on-chain-enforced `maxPerTransaction` ceiling. Denials can optionally be recorded on chain as an aborted transaction (`onChainDenials`, default `true`), so a `blocked` outcome is independently verifiable on Suiscan, not just a client-side claim. v1 passes remain fetchable, inspectable, and revocable — there is no v1 creation path anymore.
+
+Four more enterprise hardening upgrades:
 
 **1. Two-Phase Commit / Idempotency** — `createWithFireblocks()` replaces `withFireblocks()` with a full idempotency registry. If Fireblocks times out after Sui approves, retry with the same `idempotencyKey` — no double-spend, no lost transactions.
 
@@ -42,8 +44,8 @@ Four enterprise hardening upgrades:
 import { EdgePass, MIST_PER_SUI } from '@edge-protocol/sdk';
 
 const sdk = new EdgePass({ network: 'mainnet', enokiApiKey: 'YOUR_KEY' });
-const pass = await sdk.create(EdgePass.fromTemplate('festival', { owner: userAddress }), signer);
-const outcome = await sdk.execute(pass, { merchant: 'Hydra Bar', amount: BigInt(32) * MIST_PER_SUI }, signer);
+const pass = await sdk.create(EdgePass.fromTemplate('festival', { agent: agentAddress }), signer);
+const outcome = await sdk.execute(pass, { merchant: '0xhydrabar...', amount: BigInt(32) * MIST_PER_SUI }, signer);
 
 console.log(outcome.status); // 'approved' | 'escalated' | 'blocked'
 ```
@@ -58,12 +60,12 @@ Every EdgePass encodes six governance dimensions — five enforced on-chain by t
 
 | Dimension | What it controls |
 |-----------|-----------------|
-| BUDGET | Maximum global spending ceiling |
-| VELOCITY | Auto-approve threshold before escalation fires |
-| SCOPE | Explicit allowlist of approved merchants / contracts |
+| BUDGET | Maximum global spending ceiling, and a hard per-transaction ceiling (`maxPerTransaction`) |
+| VELOCITY | Rolling rate limit — max actions per window (`velocityCap` / `velocityWindowMs`), enforced on chain |
+| SCOPE | Explicit allowlist of approved merchant addresses — can only narrow after minting, never widen |
 | TIME | Hard cryptographic expiration date |
-| ESCALATION | Programmatic fallback when a limit is exceeded |
-| COMPLIANCE *(new)* | AML / sanctions / risk screening before settlement |
+| ESCALATION | Off-chain routing to a human above `escalateAbove` — not a refusal, the contract doesn't enforce it |
+| COMPLIANCE | AML / sanctions / risk screening before settlement |
 
 ---
 
@@ -153,12 +155,12 @@ const entries = await audit.read(result.blobId);
 Pre-configured for common use cases — override any field:
 
 ```typescript
-EdgePass.fromTemplate('festival',     { owner })  // $300  · auto <$50  · escalate >$100 · 48h
-EdgePass.fromTemplate('gaming',       { owner })  // $50   · auto <$2   · escalate >$10  · 4h
-EdgePass.fromTemplate('subscription', { owner })  // $200  · auto <$20  · escalate >$50  · 30d
-EdgePass.fromTemplate('defi',         { owner })  // $10k  · auto <$500 · escalate >$1k  · 7d
-EdgePass.fromTemplate('enterprise',   { owner })  // $50k  · auto <$1k  · escalate >$5k  · 30d
-EdgePass.fromTemplate('x402',         { owner })  // $1k   · auto <$10  · escalate >$100 · 24h
+EdgePass.fromTemplate('festival',     { agent })  // $300  · escalate >$50  · max/tx $200  · 48h
+EdgePass.fromTemplate('gaming',       { agent })  // $50   · escalate >$2   · max/tx $10   · 4h
+EdgePass.fromTemplate('subscription', { agent })  // $200  · escalate >$20  · max/tx $50   · 30d
+EdgePass.fromTemplate('defi',         { agent })  // $10k  · escalate >$500 · max/tx $2k   · 7d
+EdgePass.fromTemplate('enterprise',   { agent })  // $50k  · escalate >$1k  · max/tx $10k  · 30d
+EdgePass.fromTemplate('x402',         { agent })  // $1k   · escalate >$10  · max/tx $200  · 24h
 ```
 
 ---
@@ -241,13 +243,14 @@ pnpm test
 ```
 
 ```
-📋 PolicyEngine.validate()     10 tests ✓
-📋 PolicyEngine helpers         5 tests ✓
-📋 EdgePass.fromTemplate()      7 tests ✓
-📋 Constants                    5 tests ✓
-📋 Events system                7 tests ✓
+📋 PolicyEngine.validate()          11 tests ✓
+📋 PolicyEngine helpers              7 tests ✓
+📋 EdgePass.fromTemplate()           7 tests ✓
+📋 EdgePass.create() validation      2 tests ✓
+📋 Constants                         5 tests ✓
+📋 Events system                     7 tests ✓
 
-34 passed · 0 failed ✅
+39 passed · 0 failed ✅
 ```
 
 ---

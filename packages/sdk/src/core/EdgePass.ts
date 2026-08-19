@@ -186,15 +186,32 @@ export class EdgePass {
     signer: { signAndExecute: (tx: Transaction, kindBytes: string) => Promise<{ digest: string; objectId?: string | null }> }
   ): Promise<EdgePassObjectV2> {
 
+    // Catches a v1 config object (or anything spread from one) carrying the
+    // old field names through untyped/JS call sites — TypeScript's structural
+    // typing won't flag an extra property, and `escalateThreshold`/legacy
+    // `autoThreshold` silently landing here is exactly the kind of
+    // same-name-different-meaning trap that motivated renaming the field to
+    // `escalateAbove` in the first place. Fail loudly instead of minting a
+    // pass with a misconfigured (or accidentally default `undefined`)
+    // escalation threshold.
+    const legacyKeys = ['escalateThreshold', 'autoThreshold'].filter(k => k in passConfig);
+    if (legacyKeys.length > 0) {
+      throw new Error(
+        `EdgePass.create: config has v1 field(s) [${legacyKeys.join(', ')}] that no longer exist on EdgePassConfig. ` +
+        `Use \`escalateAbove\` instead — v1's \`escalateThreshold\` is what actually drove escalation and maps ` +
+        `directly to it; v1's \`autoThreshold\` was display-only and never enforced, so there is nothing to carry over from it.`
+      );
+    }
+
     // Mirrors the EInvalidConfig assertions in edge_pass_v2::create_pass,
-    // plus a couple of SDK-side sanity checks (autoThreshold/maxPerTransaction
+    // plus a couple of SDK-side sanity checks (escalateAbove/maxPerTransaction
     // ordering) that the contract doesn't need to enforce but that would
     // otherwise silently misconfigure escalation routing.
     if (!passConfig.agent) throw new Error('EdgePass.create: agent is required');
     if (passConfig.budget <= BigInt(0)) throw new Error('EdgePass.create: budget must be greater than 0');
     if (passConfig.maxPerTransaction <= BigInt(0)) throw new Error('EdgePass.create: maxPerTransaction must be greater than 0');
-    if (passConfig.autoThreshold > passConfig.maxPerTransaction) {
-      throw new Error(`EdgePass.create: autoThreshold (${passConfig.autoThreshold}) should be <= maxPerTransaction (${passConfig.maxPerTransaction}) or nothing will ever escalate`);
+    if (passConfig.escalateAbove > passConfig.maxPerTransaction) {
+      throw new Error(`EdgePass.create: escalateAbove (${passConfig.escalateAbove}) should be <= maxPerTransaction (${passConfig.maxPerTransaction}) or nothing will ever escalate`);
     }
     if (passConfig.maxPerTransaction > passConfig.budget) {
       throw new Error(`EdgePass.create: maxPerTransaction (${passConfig.maxPerTransaction}) should be <= budget (${passConfig.budget})`);
@@ -208,15 +225,20 @@ export class EdgePass {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
 
-    const packageId = EDGE_PACKAGE_ID[this.config.network];
-    if (!packageId) throw new Error(`EdgePass.create: no package ID configured for network "${this.config.network}".`);
+    const packageId = EDGE_PACKAGE_ID[this.config.network]?.v2;
+    if (!packageId) {
+      throw new Error(
+        `EdgePass.create: no v2 package ID configured for network "${this.config.network}". ` +
+        `edge_pass_v2 has not been deployed there yet — update EDGE_PACKAGE_ID[network].v2 in constants.ts after publishing.`
+      );
+    }
 
     tx.moveCall({
       target: `${packageId}::edge_pass_v2::create_pass`,
       arguments: [
         tx.pure.address(passConfig.agent),
         tx.pure.u64(passConfig.budget),
-        tx.pure.u64(passConfig.autoThreshold),
+        tx.pure.u64(passConfig.escalateAbove),
         tx.pure.u64(passConfig.maxPerTransaction),
         tx.pure.u64(passConfig.velocityCap),
         tx.pure.u64(passConfig.velocityWindowMs),
@@ -249,7 +271,7 @@ export class EdgePass {
       issuer:            passConfig.issuer ?? '',
       agent:             passConfig.agent,
       budget:            passConfig.budget,
-      autoThreshold:     passConfig.autoThreshold,
+      escalateAbove:     passConfig.escalateAbove,
       maxPerTransaction: passConfig.maxPerTransaction,
       velocityCap:       passConfig.velocityCap,
       velocityUsed:      0,
@@ -327,9 +349,15 @@ export class EdgePass {
   ): Promise<{ digest: string }> {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
-    const packageId = EDGE_PACKAGE_ID[this.config.network];
 
     if (isV2(pass)) {
+      const packageId = EDGE_PACKAGE_ID[this.config.network]?.v2;
+      if (!packageId) {
+        throw new Error(
+          `EdgePass.revoke: no v2 package ID configured for network "${this.config.network}". ` +
+          `edge_pass_v2 has not been deployed there yet.`
+        );
+      }
       // v2's revoke_pass takes a Clock — v1's does not.
       tx.moveCall({
         target: `${packageId}::edge_pass_v2::revoke_pass`,
@@ -343,6 +371,12 @@ export class EdgePass {
         ],
       });
     } else {
+      const packageId = EDGE_PACKAGE_ID[this.config.network]?.v1;
+      if (!packageId) {
+        throw new Error(
+          `EdgePass.revoke: no v1 package ID configured for network "${this.config.network}".`
+        );
+      }
       tx.moveCall({
         target:    `${packageId}::edge_pass::revoke_pass`,
         arguments: [tx.object(pass.id)],

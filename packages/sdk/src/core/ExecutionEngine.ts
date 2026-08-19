@@ -144,11 +144,11 @@ export class ExecutionEngine {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
 
-    const packageId = EDGE_PACKAGE_ID[this.network];
+    const packageId = EDGE_PACKAGE_ID[this.network]?.v2;
     if (!packageId) {
       throw new Error(
-        `EdgePass: no package ID configured for network "${this.network}". ` +
-        `Update EDGE_PACKAGE_ID in constants.ts after deploying the Move contract.`
+        `EdgePass: no v2 package ID configured for network "${this.network}". ` +
+        `Update EDGE_PACKAGE_ID[network].v2 in constants.ts after deploying edge_pass_v2.`
       );
     }
 
@@ -228,7 +228,7 @@ export class ExecutionEngine {
           issuer:           fields.issuer,
           agent:            fields.agent,
           budget:           BigInt(fields.budget),
-          autoThreshold:    BigInt(fields.auto_threshold),
+          escalateAbove:    BigInt(fields.auto_threshold),
           maxPerTransaction: BigInt(fields.max_per_transaction),
           velocityCap:      Number(fields.velocity_cap),
           velocityUsed:     Number(fields.velocity_used),

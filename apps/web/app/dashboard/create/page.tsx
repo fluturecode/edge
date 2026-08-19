@@ -79,13 +79,23 @@ export default function CreatePass() {
       const owner = getUserAddress();
       if (!owner) throw new Error('Not authenticated');
 
+      // v1 -> v2: v2 also requires a hard, on-chain-enforced
+      // `maxPerTransaction` ceiling with no UI equivalent yet; capping it at
+      // the full budget preserves the old "escalate, don't block" behavior
+      // for every amount this form can produce. `owner` becomes both
+      // `agent` (spends) and `issuer` (bookkeeping only — the real on-chain
+      // issuer is always the tx sender) since this demo wallet does both.
+      const budgetMist = BigInt(budgetNum) * MIST_PER_SUI;
       const pass = await sdk.create({
-        budget:            BigInt(budgetNum) * MIST_PER_SUI,
-        autoThreshold:     BigInt(autoNum) * MIST_PER_SUI,
-        escalateThreshold: BigInt(escalateNum) * MIST_PER_SUI,
+        agent:             owner,
+        issuer:            owner,
+        budget:            budgetMist,
+        escalateAbove:     BigInt(escalateNum) * MIST_PER_SUI,
+        maxPerTransaction: budgetMist,
+        velocityCap:       0,
+        velocityWindowMs:  0,
         approvedMerchants: selectedMerchants,
         expiryMs:          expiry * 60 * 60 * 1000,
-        owner,
       }, signer);
 
       setTxDigest(pass.id);

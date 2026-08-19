@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { EdgePass } from '@edge-protocol/sdk';
+import { EdgePass, isV2 } from '@edge-protocol/sdk';
 import { buildSigner, getUserAddress } from '@/lib/signer';
 import { writeAuditLogs, walrusExplorerUrl, AuditLogEntry } from '@/lib/walrus';
 
@@ -423,6 +423,7 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       try {
         const passObj = await sdk.fetch(passId);
         if (!passObj) { addMessage({ type: 'system', text: 'Could not fetch EdgePass.' }); return; }
+        if (!isV2(passObj)) { addMessage({ type: 'system', text: 'This EdgePass is a v1 pass and cannot execute — recreate it as v2.' }); return; }
         const outcome = await sdk.execute(passObj, { merchant: step.merchant, amount: BigInt(Math.round(step.amount * 1_000_000_000)) }, signer);
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
@@ -447,17 +448,29 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
       addMessage({ type: 'thinking', text: step.thinking, model: modelInfo.label, provider: modelInfo.provider });
       addMessage({ type: 'decision', text: step.reasoning, merchant: step.merchant, amount: step.amount });
 
+      // v1 -> v2: this mock pass used to nest everything under `config` and
+      // enforce escalation via `escalateThreshold`. v2 objects are flattened
+      // (no `config`) and the field is now `escalateAbove` — ESCALATE_THRESHOLD
+      // maps there. AUTO_THRESHOLD (v1's "auto-approve under") was
+      // display-only even in v1's PolicyEngine, so it's still only used for
+      // the system message above, not sent into the pass. `maxPerTransaction`
+      // is new in v2 and hard-blocks (rather than escalates) above it on
+      // chain; capped at BUDGET here since this mock has no separate
+      // hard-cap concept.
       const localValidation = sdk.validate(
         {
+          version: 'v2',
           id: passId,
-          config: {
-            budget: BigInt(Math.round(BUDGET * 1_000_000_000)),
-            autoThreshold: BigInt(Math.round(AUTO_THRESHOLD * 1_000_000_000)),
-            escalateThreshold: BigInt(Math.round(ESCALATE_THRESHOLD * 1_000_000_000)),
-            approvedMerchants: config.merchants.slice(0, -1),
-            expiryMs: 48 * 60 * 60 * 1000,
-            owner,
-          },
+          issuer: owner,
+          agent: owner,
+          budget: BigInt(Math.round(BUDGET * 1_000_000_000)),
+          escalateAbove: BigInt(Math.round(ESCALATE_THRESHOLD * 1_000_000_000)),
+          maxPerTransaction: BigInt(Math.round(BUDGET * 1_000_000_000)),
+          velocityCap: 0,
+          velocityUsed: 0,
+          windowMs: 0,
+          windowStartMs: Date.now() - 1000,
+          approvedMerchants: config.merchants.slice(0, -1),
           spent: BigInt(Math.round(currentSpent * 1_000_000_000)),
           active: true,
           createdAt: Date.now() - 1000,
