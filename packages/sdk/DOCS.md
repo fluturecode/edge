@@ -86,6 +86,8 @@ Every `sdk.execute()` returns one of four outcomes:
 ❌ error      — infrastructure failure, tx NOT submitted
 ```
 
+> **Escalation is notify-only in 2.0.0.** `escalated` is a terminal outcome — `execute()` returns it and stops; nothing is submitted to chain, and there is currently no way to actually execute the transaction after a human approves it. Calling `execute()` again with the same request just returns `escalated` a second time (the check is purely `amount > escalateAbove`, with no notion anywhere of "already approved"). A resolve-after-approval path is planned for 2.1 — deciding whether that approval is asserted (a flag the caller sets) or proven (something cryptographically verifiable, e.g. a signed approval) is a security-sensitive API question that needs its own design, not a rushed addition here. This was never implemented in 1.x either, so it isn't a 2.0.0 regression — just a documented limitation.
+
 ### MIST
 
 All amounts are in MIST — Sui's base unit.
@@ -621,8 +623,13 @@ interface EdgePassObjectV1 {
 }
 
 interface EdgePassObjectV2 {
-  version:            'v2';
-  id:                 string;
+  version:              'v2';
+  id:                   string;
+  initialSharedVersion: string;  // fixed at share_object time, cached forever —
+                                  // required to build tx.sharedObjectRef() for
+                                  // execute()/revoke(); see "Critical Architecture
+                                  // Notes" in HANDOFF.md for why tx.object(pass.id)
+                                  // isn't safe to use instead
   issuer:             string;   // grants/revokes, may not spend
   agent:              string;   // spends, may not revoke or change anything
   budget:             bigint;
@@ -663,10 +670,12 @@ interface TransactionRequest {
 ```typescript
 type TransactionOutcome =
   | { status: 'approved';  digest: string; objectId?: string; auto: true  }
-  | { status: 'escalated'; reason: string;                    auto: false }
+  | { status: 'escalated'; reason: string;                    auto: false } // terminal — see note below
   | { status: 'blocked';   reason: string; digest?: string; abortCode?: number; auto: false }
   | { status: 'error';     reason: string; code?: string;     auto: false };
 ```
+
+`escalated` has no `digest` field by design — it's a terminal state in 2.0.0, not a pending one. There is no resolve-after-approval call that turns an `escalated` outcome into an `approved` one; a resolve path is planned for 2.1. See [Transaction Outcomes](#transaction-outcomes) above.
 
 `digest`/`abortCode` on `blocked` are only present when `onChainDenials` is enabled (default `true`) and the denial was actually recorded as an aborted transaction — see [Move Contract](#move-contract) for how `abortCode` maps to `ABORT_CODES`.
 
@@ -769,7 +778,9 @@ type DenialReason = keyof typeof ABORT_CODES;
 import {
   MIST_PER_SUI,      // 1_000_000_000n
   NETWORK_URLS,      // { mainnet, testnet, devnet }
-  EDGE_PACKAGE_ID,   // { mainnet, testnet, devnet }
+  EDGE_PACKAGE_ID,   // { mainnet: { v1, v2 }, testnet: { v1, v2 }, devnet: { v1, v2 } }
+                     // — an empty string means "not deployed there yet"; e.g.
+                     //   mainnet.v2 is '' because v2 is testnet-only for now.
   EDGE_TEMPLATES,    // all 6 templates
   DEFAULT_GAS_BUDGET // 10_000_000n
 } from '@edge-protocol/sdk';

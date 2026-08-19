@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { generateNonce, generateRandomness } from '@mysten/sui/zklogin';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { getSuiClient, SUI_NETWORK } from '@/lib/sui-client';
 
 const T = {
   bg: '#080C14', bgCard: '#0D1420', border: '#1A2740',
@@ -12,10 +13,10 @@ const T = {
 };
 
 const LINES = [
-  { text: '$ edge init --network mainnet', color: T.grey2 },
+  { text: `$ edge init --network ${SUI_NETWORK}`, color: T.grey2 },
   { text: '✓ zkLogin provider loaded', color: T.teal },
-  { text: '✓ Sui RPC connected · 94ms latency', color: T.teal },
-  { text: '✓ Enoki zkLogin active · mainnet ready', color: T.teal },
+  { text: '✓ Sui gRPC connected · 94ms latency', color: T.teal },
+  { text: `✓ Enoki zkLogin active · ${SUI_NETWORK} ready`, color: T.teal },
   { text: '✓ Move VM ready · EdgePass contract loaded', color: T.teal },
   { text: '→ Trust infrastructure online', color: T.blue },
 ];
@@ -60,19 +61,8 @@ export default function Home() {
     // Fetch current epoch dynamically
     let maxEpoch = 1137; // fallback
     try {
-      const epochRes = await fetch('https://fullnode.mainnet.sui.io:443', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'suix_getLatestSuiSystemState',
-          params: [],
-          id: 1,
-        }),
-      });
-      const epochData = await epochRes.json();
-      const currentEpoch = Number(epochData.result.epoch);
-      maxEpoch = currentEpoch + 10;
+      const { systemState } = await getSuiClient().core.getCurrentSystemState();
+      maxEpoch = Number(systemState.epoch) + 10;
     } catch (e) {
       console.warn('Could not fetch epoch, using fallback:', maxEpoch);
     }
@@ -116,7 +106,7 @@ export default function Home() {
 
       <div style={{ maxWidth: 500, width: '100%' }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
-          {['FESTIVAL MODE DEMO', 'MAINNET'].map((label, i) => (
+          {['FESTIVAL MODE DEMO', SUI_NETWORK.toUpperCase()].map((label, i) => (
             <span key={label} style={{ background: i === 0 ? 'rgba(77,162,255,0.12)' : T.tealDim, border: `1px solid ${i === 0 ? 'rgba(77,162,255,0.3)' : T.tealBorder}`, color: i === 0 ? T.blue : T.teal, fontSize: 10, fontFamily: 'DM Mono, monospace', letterSpacing: '0.08em', padding: '3px 10px', borderRadius: 6 }}>{label}</span>
           ))}
         </div>

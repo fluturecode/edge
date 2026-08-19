@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fromBase64, toBase64 } from '@mysten/sui/utils';
+import { fromBase64 } from '@mysten/sui/utils';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { getZkLoginSignature } from '@mysten/sui/zklogin';
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import { getSuiClient } from '@/lib/sui-client';
 
-const suiClient = new SuiJsonRpcClient({
-  url: 'https://fullnode.mainnet.sui.io:443',
-  network: 'mainnet',
-});
+const suiClient = getSuiClient();
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
   try {
-    const { fullTxBytes, ephemeralKey, zkProof, maxEpoch, idToken, sender } = await req.json();
+    const { fullTxBytes, ephemeralKey, zkProof, maxEpoch, idToken } = await req.json();
     console.log(`[${Date.now()-t0}ms] received request`);
 
     if (!fullTxBytes || !ephemeralKey || !zkProof || !maxEpoch || !idToken) {
@@ -32,31 +29,58 @@ export async function POST(req: NextRequest) {
 
     console.log(`[${Date.now()-t0}ms] signed, executing...`);
 
-    const result = await suiClient.executeTransactionBlock({
-      transactionBlock: fullTxBytes,
-      signature: [zkSignature],
-      options: { showEffects: true, showObjectChanges: true },
+    // Move aborts come back from the gRPC client as *data*
+    // (`$kind: 'FailedTransaction'`), not a thrown error — only a network/
+    // signing failure that never reached the chain lands in the catch below.
+    // Requesting effects/objectTypes here means the created object (and the
+    // gas coin's new version, for lib/signer.ts's read-after-write fix) are
+    // available immediately, with no extra round trip or artificial delay.
+    const result = await suiClient.executeTransaction({
+      transaction: txBytes,
+      signatures: [zkSignature],
+      include: { effects: true, objectTypes: true },
     });
 
-    console.log(`[${Date.now()-t0}ms] ✓ confirmed: ${result.digest}`);
+    const txData = (result.Transaction ?? result.FailedTransaction)!;
+    const failed = result.$kind === 'FailedTransaction' || txData.status.success === false;
 
-    let objectId: string | null = null;
-    try {
-      await new Promise(r => setTimeout(r, 2000));
-      const txResult = await suiClient.getTransactionBlock({
-        digest: result.digest,
-        options: { showObjectChanges: true },
+    console.log(`[${Date.now()-t0}ms] ${failed ? '✗ aborted' : '✓ confirmed'}: ${txData.digest}`);
+
+    const created = txData.effects?.changedObjects.find(
+      o => o.idOperation === 'Created' && txData.objectTypes?.[o.objectId]?.includes('edge_pass')
+    );
+    const gasObjectEffect = txData.effects?.gasObject;
+    const gasObject = gasObjectEffect?.outputVersion && gasObjectEffect.outputDigest
+      ? { objectId: gasObjectEffect.objectId, version: gasObjectEffect.outputVersion, digest: gasObjectEffect.outputDigest }
+      : null;
+
+    if (failed) {
+      // Reached the chain and aborted — this is a real, independently
+      // verifiable on-chain denial (e.g. onChainDenials submitting a
+      // PolicyEngine block anyway). Still a 200: the request itself
+      // succeeded, the transaction just didn't. lib/signer.ts turns this
+      // into a thrown error with `.digest` attached so
+      // ExecutionEngine.extractAbortInfo() can tell it apart from "never
+      // reached the chain".
+      return NextResponse.json({
+        success: false,
+        digest: txData.digest,
+        error: txData.status.success === false
+          ? txData.status.error.message
+          : 'Transaction failed with no status.error',
+        gasObject,
       });
-      const created = txResult.objectChanges?.find(
-        c => c.type === 'created' && 'objectType' in c && c.objectType?.includes('edge_pass')
-      );
-      if (created && 'objectId' in created) objectId = created.objectId;
-      console.log(`[${Date.now()-t0}ms] objectId: ${objectId}`);
-    } catch (e) {
-      console.error('fetchObjectId failed:', e);
     }
 
-    return NextResponse.json({ digest: result.digest, objectId, sponsored: false });
+    console.log(`[${Date.now()-t0}ms] objectId: ${created?.objectId ?? null}`);
+
+    return NextResponse.json({
+      success: true,
+      digest: txData.digest,
+      objectId: created?.objectId ?? null,
+      gasObject,
+      sponsored: false,
+    });
 
   } catch (e) {
     console.error('sign route failed:', e);

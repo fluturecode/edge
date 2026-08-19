@@ -1,7 +1,6 @@
 import { EdgePass, isV2 } from "@edge-protocol/sdk";
-import type { EdgePassConfig, EdgePassObject, Network, PolicyValidation } from "@edge-protocol/sdk";
-
-const network = (process.env.NEXT_PUBLIC_SUI_NETWORK || "devnet") as Network;
+import type { EdgePassConfig, EdgePassObject, PolicyValidation } from "@edge-protocol/sdk";
+import { SUI_NETWORK as network } from "./sui-client";
 
 // Singleton SDK instance
 let _sdk: EdgePass | null = null;

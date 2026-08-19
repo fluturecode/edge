@@ -6,7 +6,7 @@
 
 ## New Chat Prompt
 
-> I'm building Edge Protocol — programmable trust infrastructure for autonomous AI agents on Sui. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@1.0.0 (EdgePassV2 — issuer/agent separation, velocity limits, on-chain denials). Submitted to Sui Overflow 2026 on June 21. Read HANDOFF.md before continuing.
+> I'm building Edge Protocol — programmable trust infrastructure for autonomous AI agents on Sui. Repo: github.com/fluturecode/edge. Live: edge-web-cyan.vercel.app. SDK: @edge-protocol/sdk@2.0.0 (EdgePassV2 — issuer/agent separation, velocity limits, on-chain denials; testnet only — see Network Status). Submitted to Sui Overflow 2026 on June 21. Read HANDOFF.md before continuing.
 
 ---
 
@@ -32,17 +32,21 @@
 
 ## Network Status
 
-**APP IS ON MAINNET** ✅
+**v2 (`edge_pass_v2`, the only creation path) is TESTNET ONLY.** `apps/web` only ever creates/reads v2 passes, so it must run with `NEXT_PUBLIC_SUI_NETWORK=testnet` — pointing it at mainnet makes `assertV2Available()` throw before signing. v1 (`edge_pass`) remains on mainnet, fetch/inspect/revoke only, no creation path.
 
 ```
-Mainnet Package ID: 0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
-Mainnet Deploy Tx: 4REcPLezK8gFGyUKJcMnnFXxTTvk8vbxqjU62NMeRJuS
-Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+v1 — mainnet Package ID: 0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde
+v1 — mainnet Deploy Tx:   4REcPLezK8gFGyUKJcMnnFXxTTvk8vbxqjU62NMeRJuS
+v1 — testnet Package ID:  0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98d2501d
+v2 — testnet Package ID:  0xe781abc2d83f5400a2863501a40e0ed9c68f5af63c62f050c564bacaf495361a
+v2 — mainnet Package ID:  (none — not published yet)
 ```
+
+These mirror `packages/sdk/src/utils/constants.ts`'s `EDGE_PACKAGE_ID` and `apps/web/lib/sui-client.ts`'s `V2_PACKAGE_IDS`, both keyed `{ network: { v1, v2 } }` and derived from `SUI_NETWORK` so package ID and network can't drift apart.
 
 ---
 
-## SDK v1.0.0 — Full API Surface
+## SDK v2.0.0 — Full API Surface
 
 **EdgePassV2 (current, the only creation path)** — issuer/agent separation: `issuer` grants/revokes, `agent` spends, neither can do the other's job. `escalateAbove` replaces v1's `escalateThreshold` (see "v1 → v2 gotcha" below — do not confuse with v1's dead `autoThreshold`). `maxPerTransaction` is now required and hard-enforced on chain. New `velocityCap`/`velocityWindowMs` rolling rate limit, enforced on chain. `approvedMerchants` is addresses now, not display names. v1 passes remain fetchable/inspectable/revocable but there's no v1 creation path anymore.
 
@@ -85,17 +89,22 @@ Testnet Package ID: 0x9f4065009494aa5acd92a5c72a6c22ce80939b2bddae3b34345459bc98
 
 ## Critical Architecture Notes
 
-**Use `tx.sharedObjectRef({ objectId, initialSharedVersion, mutable })` for the pass — not `tx.object(pass.id)`.** This flips prior guidance in this doc, which said `tx.object(pass.id)` was correct. That was true once, under a different transport and object model, and stopped being true when both changed:
+**Gotcha: gRPC pre-flight simulate sends on-chain denials back to "never reached chain."** Symptom, all three triggers below: an `execute()` call that should produce a real, verifiable `blocked` outcome (a Move abort) instead comes back with `digest: undefined`. It still *looks* like an on-chain denial — `status: 'blocked'` and a regex-matched `abortCode` are both populated — but `onChainDenials` recorded nothing, because nothing was ever submitted. This one symptom has three independent triggers; any single one is sufficient to reproduce it, and fixing only some of them still leaves the bug live:
 
-- v2 passes are shared objects (`transfer::share_object` in `edge_pass_v2`), not owned. `tx.object(pass.id)` on a shared object still "works" in the sense that it produces a valid input, but it has to client-side resolve the object first.
-- Under the gRPC transport, that resolution runs `Transaction.build()` through a client-side pre-flight simulation — and if the simulation predicts a Move abort, `build()` throws a `SimulationError` **instead of** letting the transaction be submitted. This silently defeated the entire `onChainDenials` feature: every denial that the SDK predicted (and was therefore trying to record on-chain as a verifiable abort) never reached the chain at all. `ExecutionEngine.execute()`'s `blocked` branch caught the thrown error and still returned a `blocked` outcome with a regex-matched `abortCode` — so it looked like an on-chain denial, but `digest` was `undefined`, because nothing was ever submitted.
-- `tx.sharedObjectRef(...)` needs no client-side resolution — `objectId`/`initialSharedVersion`/`mutable` are all supplied up front — so `build()` has nothing to simulate and skips that gate entirely, whether or not the transaction is actually going to abort on chain.
-- `initialSharedVersion` is fixed at the moment the object is shared and never changes afterward (unlike its current `version`, which changes on every mutation) — it's part of a shared object's identity, so it's fetched once in `ExecutionEngine.fetchPass()` and cached on `EdgePassObjectV2` indefinitely.
-- v1 passes are still `transfer::transfer`'d to `owner` — genuinely owned, not shared — so `tx.object(pass.id)` remains correct (and the only option) for v1's `revoke_pass`. This fix is v2-only.
+1. **Unresolved object arguments.** v2 passes are shared objects (`transfer::share_object` in `edge_pass_v2`), not owned. `tx.object(pass.id)` on a shared object still produces a valid input, but has to client-side resolve the object first.
+2. **Missing gas payment.** `ExecutionEngine.buildPTB()` only calls `tx.setGasBudget(...)` — it deliberately never sets `tx.setGasPayment(...)` itself.
+3. **Missing gas price.** Same deliberate omission — `buildPTB()` never calls `tx.setGasPrice(...)`.
+
+Root cause, shared by all three: `@mysten/sui`'s gRPC `Transaction.build()` calls `needsTransactionResolution()` before submitting, which checks *both* object and gas inputs — it fires whenever an object argument needs resolving, **or** gas price, **or** gas payment isn't already set (gas budget alone isn't enough). When it fires, `build()` runs a client-side pre-flight `simulateTransaction` — a real dry run, Move call included — and if that dry run predicts a Move abort, `build()` throws a `SimulationError` **instead of** submitting. `ExecutionEngine.execute()`'s `blocked` branch used to catch that thrown error and still return `blocked` with the regex-matched `abortCode`, which is how this silently defeated the entire `onChainDenials` feature.
+
+Fix, one per trigger — all three needed together, since any one left unaddressed still trips `needsTransactionResolution()`:
+
+- **Object argument** — use `tx.sharedObjectRef({ objectId, initialSharedVersion, mutable })` instead of `tx.object(pass.id)`. `objectId`/`initialSharedVersion`/`mutable` are all supplied up front, so `build()` has nothing to resolve and skips the gate entirely, whether or not the transaction is actually going to abort on chain. `initialSharedVersion` is fixed at the moment the object is shared and never changes afterward (unlike its current `version`, which changes on every mutation) — it's part of a shared object's identity, so it's fetched once in `ExecutionEngine.fetchPass()` and cached on `EdgePassObjectV2` indefinitely. v1 passes are still `transfer::transfer`'d to `owner` — genuinely owned, not shared — so `tx.object(pass.id)` remains correct (and the only option) for v1's `revoke_pass`; this fix is v2-only.
+- **Gas payment / gas price** — resolving these means knowing which address (and which client) is actually paying for gas, and that's the signer's call, not the engine's: a direct wallet pays from its own coins (see `apps/web/lib/signer.ts`), a sponsored signer (Enoki) pays from a completely different address the engine has no business assuming. So `ExecutionEngine.buildPTB()` deliberately leaves both unset, and **any signer implementation that wants a real, verifiable on-chain denial must call `tx.setGasPrice(...)` and `tx.setGasPayment([...])` itself** before building/submitting. `packages/sdk/src/e2e.testnet.ts`'s `resolveGasForSender` shows a direct-wallet version of this (including carrying the gas coin's new version forward from each transaction's own effects, since firing transactions back to back with no delay hits the same read-after-write staleness on the gas coin that it does on the pass — see the next section).
+
+Confirmed fixed (all three triggers addressed) by running the live testnet e2e (`packages/sdk/src/e2e.testnet.ts`) — see the SDK README for the resulting package ID and one digest per outcome, each resolvable on Suiscan.
 
 Still never use `tx.objectRef()` for the pass — that snapshots a specific version+digest and causes version conflicts with Enoki sponsorship. That guidance is unrelated to (and unaffected by) the above; `tx.sharedObjectRef()` and `tx.objectRef()` are different APIs for different object ownership models.
-
-**The sharedObjectRef fix above is necessary but NOT sufficient by itself — gas matters too, and it's the signer's job, not the SDK's.** Confirmed by running the live testnet e2e (see `packages/sdk/src/e2e.testnet.ts`): even after fixing the pass/Clock arguments, `ExecutionEngine.execute()`'s denials still threw `SimulationError` instead of reaching the chain. The reason: `@mysten/sui`'s gRPC `Transaction.build()` decides whether to resolve-and-simulate based on `needsTransactionResolution()`, which checks object *and* gas inputs — it fires whenever gas price, budget, **or** payment isn't already set, not just budget. `ExecutionEngine.buildPTB()` only calls `tx.setGasBudget(...)`; price and payment are deliberately left unset, because resolving them means knowing which address (and which client) is actually paying for gas — a direct wallet pays from its own coins (see `apps/web/lib/signer.ts`), a sponsored signer (Enoki) pays from a completely different address the engine has no business assuming. So the engine can't safely do this itself, and doesn't try. **Any signer implementation that wants a real, verifiable on-chain denial must call `tx.setGasPrice(...)` and `tx.setGasPayment([...])` itself** before building/submitting — otherwise the gate still fires. `packages/sdk/src/e2e.testnet.ts`'s signer shows a direct-wallet version of this (including carrying the gas coin's new version forward from each transaction's own effects, since firing transactions back to back with no delay hits the same read-after-write staleness on the gas coin that it does on the pass — see the next section).
 
 **Sequential execution** — 2s settle delay between approved txs. Prevents Sui object version conflicts. Note: `sdk.fetch()` no longer needs this delay for its own read-after-write correctness — `ExecutionEngine` now tracks the digest of its own last write per object and has `fetchPass()` wait on that specific transaction's effects before reading (see `ExecutionEngine.registerWrite`/`waitForReadConsistency`), verified by the live e2e running create → execute → fetch → three denials back to back with zero artificial delay. This settle delay is still relevant for a caller doing its own rapid-fire sequential *writes* against a shared object outside the SDK's tracking (e.g. two different signer instances racing each other) — it just isn't needed to avoid *stale reads* through `sdk.fetch()` anymore.
 
@@ -151,7 +160,7 @@ Note: `expiry_ms` does NOT exist on-chain in either version. SDK calculates: `ex
 ## What's Real vs Mocked
 
 **Real:**
-- Move contract on Sui mainnet with verifiable digests — now `edge_pass_v2` for new passes, `edge_pass` (v1) remains for existing ones
+- Move contracts with verifiable digests — `edge_pass_v2` for new passes on **testnet** (mainnet has no v2 package yet), `edge_pass` (v1) remains on **mainnet** for existing passes
 - zkLogin wallet derivation (salt fix applied)
 - Enoki gas sponsorship
 - Claude + Gemini inference
@@ -170,9 +179,9 @@ Note: `expiry_ms` does NOT exist on-chain in either version. SDK calculates: `ex
 ## Environment Variables
 
 ```
-NEXT_PUBLIC_ENOKI_API_KEY — enoki public key (mainnet enabled)
+NEXT_PUBLIC_ENOKI_API_KEY — enoki public key (mainnet + testnet enabled)
 NEXT_PUBLIC_GOOGLE_CLIENT_ID — Google OAuth client ID
-NEXT_PUBLIC_SUI_NETWORK=mainnet
+NEXT_PUBLIC_SUI_NETWORK=testnet — v2 (the only pass type apps/web creates/executes) doesn't exist on mainnet yet; setting this to mainnet makes create()/execute() throw
 NEXT_PUBLIC_APP_URL=https://edge-web-cyan.vercel.app
 ENOKI_SECRET_KEY — enoki private key (rotate after use)
 ANTHROPIC_API_KEY — from console.anthropic.com
@@ -189,13 +198,13 @@ GOOGLE_API_KEY — paid tier required, gemini-2.5-flash
 
 ---
 
-## v1.0.0 Roadmap
+## v2.0.0 Roadmap
 
 1. ✅ Upgrade `@mysten/sui` to v2 — unlocks `@mysten/walrus` + `@mysten/seal` network storage
 2. ✅ Real Walrus blob storage — `apps/web`'s `/api/walrus` writes to real publishers now (mock is fallback-only); SDK's `WalrusAudit` gives full decentralized audit trail, not yet wired into the app
 3. ⬜ Retry logic in ExecutionEngine on VERSION_CONFLICT — still not implemented, checked in `ExecutionEngine.ts`
 4. ✅ Rolling rate-limit window in PolicyEngine — shipped as `velocityCap`/`velocityWindowMs` in EdgePassV2, not the originally-planned `maxTransactionsPerHour` shape but the same purpose
-5. ⚠️ Publish v1.0.0 — `package.json` is at `1.0.0` and `packages/sdk/README.md` documents a "What's New in v1.0.0" section, but `packages/sdk/CHANGELOG.md`'s latest entry is still `[0.8.0]` — the 1.0.0 changelog entry (which should also cover EdgePassV2) hasn't been written yet. Confirm on npm whether `1.0.0` is actually published before telling anyone it is.
+5. ⚠️ Publish v2.0.0 — `package.json` is at `2.0.0` and `packages/sdk/CHANGELOG.md`'s latest entry matches it (`[2.0.0] — 2026-08-19`). Confirm on npm whether `2.0.0` is actually published before telling anyone it is.
 
 ---
 

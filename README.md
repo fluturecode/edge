@@ -17,6 +17,18 @@ EdgePass gives agents your rules, not your keys.
 
 ---
 
+> ## ⚠️ Network status — read this before you mint anything
+>
+> **`edge_pass_v2` is deployed to Sui testnet only.** Mainnet cannot mint v2 passes yet — `sdk.create()` on mainnet throws rather than silently targeting a package that doesn't have the module. Use `network: 'testnet'` until v2 ships to mainnet.
+>
+> **New passes are always v2.** There is no v1 creation path in the 2.x SDK — `sdk.create()` only ever mints v2.
+>
+> **v1 passes are read-only in the 2.x SDK.** If you already hold a v1 pass (minted on mainnet before this release), you can still `fetch()`, inspect, and `revoke()` it — you cannot create a new one or spend against one.
+>
+> **`edge_pass.move` (v1) stays in this repo permanently.** It's not dead code left over from before v2 — real v1 passes exist on Sui mainnet today, and the SDK's `fetch()`/`revoke()` need that module's functions to keep working for them, indefinitely.
+
+---
+
 ## The Problem
 
 Every developer building an autonomous agent hits the same wall:
@@ -133,8 +145,9 @@ const pass = await sdk.create(
 
 ```typescript
 const outcome = await sdk.execute(pass, {
-  merchant: 'Shuttle Express',
-  amount:   BigInt(18_500_000_000), // 18.5 SUI in MIST
+  merchant:      '0xshuttle...',        // address — must be in approvedMerchants
+  merchantLabel: 'Shuttle Express',     // display only, not enforced
+  amount:        BigInt(18_500_000_000), // 18.5 SUI in MIST
 }, signer);
 
 switch (outcome.status) {
@@ -409,7 +422,7 @@ edge/
 │       ├── zkp/route.ts             ZK proof generation via Enoki
 │       └── agent/route.ts           Claude/Gemini API for autonomous decisions
 │
-├── 📦 packages/sdk/                 @edge-protocol/sdk v1.0.0
+├── 📦 packages/sdk/                 @edge-protocol/sdk v2.0.0
 │   └── src/
 │       ├── core/
 │       │   ├── EdgePass.ts             Main API + events + simulate() + withPolicy()

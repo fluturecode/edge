@@ -20,13 +20,15 @@ EdgePass is the policy layer — scoped, programmatic spend authority issued dir
 
 ---
 
+## What's New in v2.0.0
+
+**EdgePassV2 — issuer/agent separation.** The pass is shared, not owned: an `issuer` grants and revokes but cannot spend, an `agent` spends but cannot revoke or change anything, and neither can do the other's job. Scope can only narrow after minting — there's no `add_merchant`, by design, not even for the issuer. Adds a rolling `velocityCap` / `velocityWindowMs` rate limit (a budget caps *how much*, not *how fast*) and a hard, on-chain-enforced `maxPerTransaction` ceiling. Denials can optionally be recorded on chain as an aborted transaction (`onChainDenials`, default `true`), so a `blocked` outcome is independently verifiable on Suiscan, not just a client-side claim. v1 passes remain fetchable, inspectable, and revocable — there is no v1 creation path anymore. **`edge_pass_v2` is deployed to Sui testnet only** — mainnet cannot mint v2 passes yet (see [Move Contract](#-move-contract)).
+
 ## What's New in v1.0.0
 
 **Upgraded to `@mysten/sui` v2.20.1 and `@mysten/walrus` v1.2.3.**
 
-**EdgePassV2 — issuer/agent separation.** The pass is shared, not owned: an `issuer` grants and revokes but cannot spend, an `agent` spends but cannot revoke or change anything, and neither can do the other's job. Scope can only narrow after minting — there's no `add_merchant`, by design, not even for the issuer. Adds a rolling `velocityCap` / `velocityWindowMs` rate limit (a budget caps *how much*, not *how fast*) and a hard, on-chain-enforced `maxPerTransaction` ceiling. Denials can optionally be recorded on chain as an aborted transaction (`onChainDenials`, default `true`), so a `blocked` outcome is independently verifiable on Suiscan, not just a client-side claim. v1 passes remain fetchable, inspectable, and revocable — there is no v1 creation path anymore.
-
-Four more enterprise hardening upgrades:
+Four enterprise hardening upgrades:
 
 **1. Two-Phase Commit / Idempotency** — `createWithFireblocks()` replaces `withFireblocks()` with a full idempotency registry. If Fireblocks times out after Sui approves, retry with the same `idempotencyKey` — no double-spend, no lost transactions.
 
@@ -64,7 +66,7 @@ Every EdgePass encodes six governance dimensions — five enforced on-chain by t
 | VELOCITY | Rolling rate limit — max actions per window (`velocityCap` / `velocityWindowMs`), enforced on chain |
 | SCOPE | Explicit allowlist of approved merchant addresses — can only narrow after minting, never widen |
 | TIME | Hard cryptographic expiration date |
-| ESCALATION | Off-chain routing to a human above `escalateAbove` — not a refusal, the contract doesn't enforce it |
+| ESCALATION | Off-chain routing to a human above `escalateAbove` — not a refusal, the contract doesn't enforce it. **Notify-only in 2.0.0** — `execute()` returns `escalated` as a terminal state; there's no path yet to actually execute after a human approves (planned for 2.1) |
 | COMPLIANCE | AML / sanctions / risk screening before settlement |
 
 ---
@@ -183,6 +185,8 @@ type TransactionOutcome =
   | { status: 'error';     reason: string; code?: string; auto: false; }
 ```
 
+> **`escalated` is notify-only in 2.0.0.** Nothing is submitted to chain, and there's currently no way to execute the transaction after a human approves it — calling `execute()` again just returns `escalated` a second time. A resolve-after-approval path is planned for 2.1; see [DOCS.md](DOCS.md#transaction-outcomes) for why it isn't in this release.
+
 ---
 
 ## 🔔 Events System
@@ -263,6 +267,26 @@ Network:  Sui Mainnet ✅
 ```
 
 [View on Suiscan →](https://suiscan.xyz/mainnet/object/0x2ad62ac22e74172cc2e33cbebd7471fb16403831b3bdd1143d51935cefd1bbde)
+
+---
+
+## ✅ Verified on Testnet — Every Outcome, One Real Digest Each
+
+`edge_pass_v2` on Sui testnet, exercised end-to-end through the actual SDK (`sdk.create()` → `sdk.execute()` → `sdk.fetch()` → three on-chain denials, back to back, zero artificial delay) — not the Move test suite, not mocks. Every `blocked` outcome below reached the chain and carries a real digest with the correct Move abort code; nothing here is a client-side simulation. Run it yourself: `packages/sdk/src/e2e.testnet.ts`.
+
+```
+Package: 0xe781abc2d83f5400a2863501a40e0ed9c68f5af63c62f050c564bacaf495361a
+Network: Sui Testnet
+```
+
+| Outcome | Digest | Suiscan |
+|---------|--------|---------|
+| ✅ approved | `HF7H6ZkSRNmtkXwmDpfcw6ceFcL578JrbuXsbdPzvxJm` | [view →](https://suiscan.xyz/testnet/tx/HF7H6ZkSRNmtkXwmDpfcw6ceFcL578JrbuXsbdPzvxJm) |
+| 🚫 blocked — merchant not approved (`EMerchantNotApproved`) | `EizwuS2NxxTXXhtW5F9c78Tw3N8hJFLT9NEVQf466PRr` | [view →](https://suiscan.xyz/testnet/tx/EizwuS2NxxTXXhtW5F9c78Tw3N8hJFLT9NEVQf466PRr) |
+| 🚫 blocked — exceeds max per transaction (`EExceedsMaxPerTransaction`) | `3wVfRdQbKFEqbeQmaPXpF5wkGG9K1CqkMJbE6762XFYp` | [view →](https://suiscan.xyz/testnet/tx/3wVfRdQbKFEqbeQmaPXpF5wkGG9K1CqkMJbE6762XFYp) |
+| 🚫 blocked — budget exceeded (`EBudgetExceeded`) | `ER9Kwrj5WPh2CKyPXpyvG2b7DLD9PKvfNLpXDX3Mq5TH` | [view →](https://suiscan.xyz/testnet/tx/ER9Kwrj5WPh2CKyPXpyvG2b7DLD9PKvfNLpXDX3Mq5TH) |
+
+Anyone can check the refusals themselves — that's the point. A `blocked` outcome with a digest isn't Edge's word for it; it's an aborted transaction anyone can look up.
 
 ---
 
