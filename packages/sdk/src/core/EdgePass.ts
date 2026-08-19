@@ -4,11 +4,14 @@ import { toBase64 } from "@mysten/sui/utils";
 import {
   EdgePassConfig,
   EdgePassObject,
+  EdgePassObjectV2,
   TransactionRequest,
   TransactionOutcome,
   EdgeSDKConfig,
   SimulationResult,
   BudgetStatus,
+  VelocityStatus,
+  isV2,
 } from "../utils/types";
 import { PolicyEngine } from "./PolicyEngine";
 import { ExecutionEngine } from "./ExecutionEngine";
@@ -27,9 +30,9 @@ const SUI_CLOCK_OBJECT_ID = '0x0000000000000000000000000000000000000000000000000
 export type EdgePassEventType = 'approved' | 'escalated' | 'blocked';
 
 export type EdgePassEventPayload =
-  | { type: 'approved';  outcome: TransactionOutcome & { status: 'approved'  }; pass: EdgePassObject; request: TransactionRequest }
-  | { type: 'escalated'; outcome: TransactionOutcome & { status: 'escalated' }; pass: EdgePassObject; request: TransactionRequest }
-  | { type: 'blocked';   outcome: TransactionOutcome & { status: 'blocked'   }; pass: EdgePassObject; request: TransactionRequest };
+  | { type: 'approved';  outcome: TransactionOutcome & { status: 'approved'  }; pass: EdgePassObjectV2; request: TransactionRequest }
+  | { type: 'escalated'; outcome: TransactionOutcome & { status: 'escalated' }; pass: EdgePassObjectV2; request: TransactionRequest }
+  | { type: 'blocked';   outcome: TransactionOutcome & { status: 'blocked'   }; pass: EdgePassObjectV2; request: TransactionRequest };
 
 type EventListener<T extends EdgePassEventType> = (
   payload: Extract<EdgePassEventPayload, { type: T }>
@@ -50,7 +53,7 @@ export class EdgePass {
       url: NETWORK_URLS[config.network],
       network: config.network as 'mainnet' | 'testnet' | 'devnet',
     });
-    this.engine = new ExecutionEngine(config.network);
+    this.engine = new ExecutionEngine(config.network, config.onChainDenials ?? true);
   }
 
   // ── Event system ──────────────────────────────────────────────────────────────
@@ -88,7 +91,7 @@ export class EdgePass {
 
   static fromTemplate(
     template: EdgePassTemplate,
-    overrides: Partial<EdgePassConfig> & { owner: string }
+    overrides: Partial<EdgePassConfig> & { agent: string }
   ): EdgePassConfig {
     const base = EDGE_TEMPLATES[template];
     return {
@@ -99,7 +102,7 @@ export class EdgePass {
   }
 
   static withPolicy<T>(
-    pass: EdgePassObject,
+    pass: EdgePassObjectV2,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> },
     sdk: EdgePass,
     fn: (request: TransactionRequest) => Promise<T>
@@ -123,7 +126,7 @@ export class EdgePass {
    * compatibility but will be removed in v2.0.0.
    */
   static withFireblocks<TSettlement>(
-    pass: EdgePassObject,
+    pass: EdgePassObjectV2,
     signer: { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> },
     sdk: EdgePass,
     options: {
@@ -181,20 +184,26 @@ export class EdgePass {
   async create(
     passConfig: EdgePassConfig,
     signer: { signAndExecute: (tx: Transaction, kindBytes: string) => Promise<{ digest: string; objectId?: string | null }> }
-  ): Promise<EdgePassObject> {
+  ): Promise<EdgePassObjectV2> {
 
-    if (passConfig.autoThreshold >= passConfig.escalateThreshold) {
-      throw new Error(`EdgePass.create: autoThreshold (${passConfig.autoThreshold}) must be less than escalateThreshold (${passConfig.escalateThreshold})`);
+    // Mirrors the EInvalidConfig assertions in edge_pass_v2::create_pass,
+    // plus a couple of SDK-side sanity checks (autoThreshold/maxPerTransaction
+    // ordering) that the contract doesn't need to enforce but that would
+    // otherwise silently misconfigure escalation routing.
+    if (!passConfig.agent) throw new Error('EdgePass.create: agent is required');
+    if (passConfig.budget <= BigInt(0)) throw new Error('EdgePass.create: budget must be greater than 0');
+    if (passConfig.maxPerTransaction <= BigInt(0)) throw new Error('EdgePass.create: maxPerTransaction must be greater than 0');
+    if (passConfig.autoThreshold > passConfig.maxPerTransaction) {
+      throw new Error(`EdgePass.create: autoThreshold (${passConfig.autoThreshold}) should be <= maxPerTransaction (${passConfig.maxPerTransaction}) or nothing will ever escalate`);
     }
-    if (passConfig.escalateThreshold > passConfig.budget) {
-      throw new Error(`EdgePass.create: escalateThreshold (${passConfig.escalateThreshold}) must be less than budget (${passConfig.budget})`);
+    if (passConfig.maxPerTransaction > passConfig.budget) {
+      throw new Error(`EdgePass.create: maxPerTransaction (${passConfig.maxPerTransaction}) should be <= budget (${passConfig.budget})`);
     }
-    if (passConfig.maxPerTransaction !== undefined && passConfig.maxPerTransaction < passConfig.escalateThreshold) {
-      throw new Error(`EdgePass.create: maxPerTransaction (${passConfig.maxPerTransaction}) should be >= escalateThreshold (${passConfig.escalateThreshold}) to avoid unexpected blocking`);
+    if (passConfig.velocityCap > 0 && passConfig.velocityWindowMs <= 0) {
+      throw new Error('EdgePass.create: velocityWindowMs must be greater than 0 when velocityCap is set');
     }
     if (passConfig.approvedMerchants.length === 0) throw new Error('EdgePass.create: approvedMerchants cannot be empty');
     if (passConfig.expiryMs <= 0) throw new Error('EdgePass.create: expiryMs must be greater than 0');
-    if (passConfig.budget <= BigInt(0)) throw new Error('EdgePass.create: budget must be greater than 0');
 
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
@@ -203,13 +212,16 @@ export class EdgePass {
     if (!packageId) throw new Error(`EdgePass.create: no package ID configured for network "${this.config.network}".`);
 
     tx.moveCall({
-      target: `${packageId}::edge_pass::create_pass`,
+      target: `${packageId}::edge_pass_v2::create_pass`,
       arguments: [
+        tx.pure.address(passConfig.agent),
         tx.pure.u64(passConfig.budget),
         tx.pure.u64(passConfig.autoThreshold),
-        tx.pure.u64(passConfig.escalateThreshold),
+        tx.pure.u64(passConfig.maxPerTransaction),
+        tx.pure.u64(passConfig.velocityCap),
+        tx.pure.u64(passConfig.velocityWindowMs),
+        tx.pure.vector('address', passConfig.approvedMerchants),
         tx.pure.u64(passConfig.expiryMs),
-        tx.pure.vector('string', passConfig.approvedMerchants),
         tx.sharedObjectRef({
           objectId:             SUI_CLOCK_OBJECT_ID,
           initialSharedVersion: 1,
@@ -221,19 +233,38 @@ export class EdgePass {
     const kindBytes = toBase64(await tx.build({ onlyTransactionKind: true }));
     const result = await signer.signAndExecute(tx, kindBytes);
 
+    // Prefer refetching the real on-chain object — it's the only reliable
+    // source for `issuer` (the tx sender, which the SDK never sends as an
+    // argument). Fall back to a locally-constructed approximation if the
+    // object ID wasn't returned or the refetch fails.
+    if (result.objectId) {
+      const fetched = await this.fetch(result.objectId);
+      if (fetched && fetched.version === 'v2') return fetched;
+    }
+
     const now = Date.now();
     return {
-      id:        result.objectId || result.digest,
-      config:    passConfig,
-      spent:     BigInt(0),
-      active:    true,
-      createdAt: now,
-      expiresAt: now + passConfig.expiryMs,
+      version:           'v2',
+      id:                result.objectId || result.digest,
+      issuer:            passConfig.issuer ?? '',
+      agent:             passConfig.agent,
+      budget:            passConfig.budget,
+      autoThreshold:     passConfig.autoThreshold,
+      maxPerTransaction: passConfig.maxPerTransaction,
+      velocityCap:       passConfig.velocityCap,
+      velocityUsed:      0,
+      windowMs:          passConfig.velocityWindowMs,
+      windowStartMs:     now,
+      approvedMerchants: passConfig.approvedMerchants,
+      spent:             BigInt(0),
+      active:            true,
+      createdAt:         now,
+      expiresAt:         now + passConfig.expiryMs,
     };
   }
 
   async execute(
-    pass:    EdgePassObject,
+    pass:    EdgePassObjectV2,
     request: TransactionRequest,
     signer:  { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> }
   ): Promise<TransactionOutcome> {
@@ -246,12 +277,16 @@ export class EdgePass {
     return outcome;
   }
 
-  simulate(pass: EdgePassObject, requests: TransactionRequest[]): SimulationResult {
+  simulate(pass: EdgePassObjectV2, requests: TransactionRequest[]): SimulationResult {
     return PolicyEngine.simulate(pass, requests);
   }
 
-  validate(pass: EdgePassObject, request: TransactionRequest) {
+  validate(pass: EdgePassObjectV2, request: TransactionRequest) {
     return PolicyEngine.validate(pass, request);
+  }
+
+  velocityStatus(pass: EdgePassObjectV2): VelocityStatus {
+    return PolicyEngine.velocityStatus(pass);
   }
 
   budgetStatus(pass: EdgePassObject, nearLimitThreshold = 0.8): BudgetStatus {
@@ -293,10 +328,27 @@ export class EdgePass {
     const tx = new Transaction();
     tx.setGasBudget(DEFAULT_GAS_BUDGET);
     const packageId = EDGE_PACKAGE_ID[this.config.network];
-    tx.moveCall({
-      target:    `${packageId}::edge_pass::revoke_pass`,
-      arguments: [tx.object(pass.id)],
-    });
+
+    if (isV2(pass)) {
+      // v2's revoke_pass takes a Clock — v1's does not.
+      tx.moveCall({
+        target: `${packageId}::edge_pass_v2::revoke_pass`,
+        arguments: [
+          tx.object(pass.id),
+          tx.sharedObjectRef({
+            objectId:             SUI_CLOCK_OBJECT_ID,
+            initialSharedVersion: 1,
+            mutable:              false,
+          }),
+        ],
+      });
+    } else {
+      tx.moveCall({
+        target:    `${packageId}::edge_pass::revoke_pass`,
+        arguments: [tx.object(pass.id)],
+      });
+    }
+
     return signer.signAndExecute(tx);
   }
 }

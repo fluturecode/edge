@@ -44,15 +44,20 @@ export type { AuditLogEntry, AuditBundle, WalrusWriteResult } from './audit/Walr
 export type {
   EdgePassConfig,
   EdgePassObject,
+  EdgePassObjectV1,
+  EdgePassObjectV2,
   TransactionRequest,
   TransactionOutcome,
   PolicyValidation,
   SimulatedDecision,
   SimulationResult,
   BudgetStatus,
+  VelocityStatus,
+  DenialReason,
   Network,
   EdgeSDKConfig,
 } from './utils/types';
+export { isV1, isV2, ABORT_CODES } from './utils/types';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 export {

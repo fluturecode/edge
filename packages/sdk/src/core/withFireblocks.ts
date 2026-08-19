@@ -1,6 +1,6 @@
 import { Transaction } from '@mysten/sui/transactions';
 import {
-  EdgePassObject,
+  EdgePassObjectV2,
   TransactionRequest,
   TransactionOutcome,
 } from '../utils/types';
@@ -105,7 +105,7 @@ export interface WithFireblocksResult<TSettlement> {
 // ── Core function ──────────────────────────────────────────────────────────────
 
 export function createWithFireblocks<TSettlement>(
-  pass:    EdgePassObject,
+  pass:    EdgePassObjectV2,
   signer:  { signAndExecute: (tx: Transaction) => Promise<{ digest: string }> },
   sdk:     EdgePass,
   options: WithFireblocksOptions<TSettlement>

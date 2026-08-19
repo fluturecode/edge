@@ -1,4 +1,4 @@
-import { EdgePassConfig, EdgePassObject } from '../utils/types';
+import { EdgePassObjectV2 } from '../utils/types';
 
 // ── Dynamic JWT types ──────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ export interface DynamicIdentity {
   rawPayload:       DynamicJWTPayload;
 }
 
-export interface IdentityBoundEdgePass extends EdgePassObject {
+export interface IdentityBoundEdgePass extends EdgePassObjectV2 {
   identity: {
     dynamicUserId:     string;
     walletAddress:     string;
@@ -152,7 +152,7 @@ export class DynamicIdentityEngine {
    * await sdk.execute(boundPass, request, signer);
    */
   static bind(
-    pass:     EdgePassObject,
+    pass:     EdgePassObjectV2,
     identity: DynamicIdentity
   ): IdentityBoundEdgePass {
     if (!identity.sessionValid) {
@@ -223,7 +223,7 @@ export class DynamicIdentityEngine {
   /**
    * Check if an EdgePass is identity-bound.
    */
-  static isBound(pass: EdgePassObject): pass is IdentityBoundEdgePass {
+  static isBound(pass: EdgePassObjectV2): pass is IdentityBoundEdgePass {
     return 'identity' in pass && typeof (pass as IdentityBoundEdgePass).identity === 'object';
   }
 

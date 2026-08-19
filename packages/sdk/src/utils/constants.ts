@@ -15,45 +15,55 @@ export const EDGE_PACKAGE_ID: Record<string, string> = {
 export const DEFAULT_GAS_BUDGET = BigInt(10_000_000);
 
 // ── Templates ─────────────────────────────────────────────────────────────
+//
+// v2 templates — no more escalateThreshold. autoThreshold now drives
+// off-chain escalation routing directly, maxPerTransaction is the hard
+// on-chain ceiling, and each template ships a sane velocity default.
+// approvedMerchants are addresses (empty here — fill in per deployment).
 
 export const EDGE_TEMPLATES = {
   festival: {
     budget:            BigInt(300)    * MIST_PER_SUI,
     autoThreshold:     BigInt(50)     * MIST_PER_SUI,
-    escalateThreshold: BigInt(100)    * MIST_PER_SUI,
     maxPerTransaction: BigInt(200)    * MIST_PER_SUI,
+    velocityCap:       20,
+    velocityWindowMs:  60 * 60 * 1000,        // 20 actions / hour
     expiryMs:          48 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
   gaming: {
     budget:            BigInt(50)     * MIST_PER_SUI,
     autoThreshold:     BigInt(2)      * MIST_PER_SUI,
-    escalateThreshold: BigInt(10)     * MIST_PER_SUI,
     maxPerTransaction: BigInt(10)     * MIST_PER_SUI,
+    velocityCap:       50,
+    velocityWindowMs:  10 * 60 * 1000,        // 50 actions / 10 min
     expiryMs:          4 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
   subscription: {
     budget:            BigInt(200)    * MIST_PER_SUI,
     autoThreshold:     BigInt(20)     * MIST_PER_SUI,
-    escalateThreshold: BigInt(50)     * MIST_PER_SUI,
     maxPerTransaction: BigInt(50)     * MIST_PER_SUI,
+    velocityCap:       5,
+    velocityWindowMs:  24 * 60 * 60 * 1000,   // 5 actions / day
     expiryMs:          30 * 24 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
   defi: {
     budget:            BigInt(10_000) * MIST_PER_SUI,
     autoThreshold:     BigInt(500)    * MIST_PER_SUI,
-    escalateThreshold: BigInt(1_000)  * MIST_PER_SUI,
     maxPerTransaction: BigInt(2_000)  * MIST_PER_SUI,
+    velocityCap:       10,
+    velocityWindowMs:  60 * 60 * 1000,        // 10 actions / hour
     expiryMs:          7 * 24 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
   enterprise: {
     budget:            BigInt(50_000) * MIST_PER_SUI,
     autoThreshold:     BigInt(1_000)  * MIST_PER_SUI,
-    escalateThreshold: BigInt(5_000)  * MIST_PER_SUI,
     maxPerTransaction: BigInt(10_000) * MIST_PER_SUI,
+    velocityCap:       100,
+    velocityWindowMs:  60 * 60 * 1000,        // 100 actions / hour
     expiryMs:          30 * 24 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
@@ -63,8 +73,9 @@ export const EDGE_TEMPLATES = {
   x402: {
     budget:            BigInt(1_000)  * MIST_PER_SUI,
     autoThreshold:     BigInt(10)     * MIST_PER_SUI,
-    escalateThreshold: BigInt(100)    * MIST_PER_SUI,
     maxPerTransaction: BigInt(200)    * MIST_PER_SUI,
+    velocityCap:       30,
+    velocityWindowMs:  5 * 60 * 1000,         // 30 actions / 5 min — machine-speed retries
     expiryMs:          24 * 60 * 60 * 1000,
     approvedMerchants: [] as string[],
   },
