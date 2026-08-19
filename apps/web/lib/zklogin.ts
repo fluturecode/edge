@@ -1,11 +1,16 @@
 import { jwtDecode } from 'jwt-decode';
-import { jwtToAddress, getZkLoginSignature } from '@mysten/sui/zklogin';
+import { getZkLoginSignature } from '@mysten/sui/zklogin';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { SUI_NETWORK } from './sui-client';
 
-export function getZkLoginAddress(idToken: string): string {
-  return jwtToAddress(idToken, BigInt(0), true);
-}
+// Removed: getZkLoginAddress(idToken) — derived the address locally with a
+// hardcoded salt of 0 (jwtToAddress(idToken, BigInt(0), true)), which is
+// wrong whenever Enoki returns a real, non-zero salt (the normal case).
+// The one caller (dashboard/page.tsx) now uses getUserAddress() from
+// lib/signer.ts instead — the real Enoki-derived address stored by
+// app/auth/callback/page.tsx. Kept as a comment, not just a silent
+// deletion, since this exact hardcoded-salt-0 pattern is called out in
+// HANDOFF.md as "the most common zkLogin bug."
 
 export function getDecodedJwt(idToken: string) {
   return jwtDecode(idToken) as {

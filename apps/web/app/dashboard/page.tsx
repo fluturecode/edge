@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getZkLoginAddress, getDecodedJwt } from '@/lib/zklogin';
+import { getDecodedJwt } from '@/lib/zklogin';
+import { getUserAddress } from '@/lib/signer';
 import { SUI_NETWORK, suiscanUrl } from '@/lib/sui-client';
 import { FESTIVAL_MERCHANTS, findMerchantByAddress } from '@/lib/merchants';
 import type { Network } from '@edge-protocol/sdk';
@@ -50,7 +51,11 @@ export default function Dashboard() {
     const token = localStorage.getItem('edge_id_token');
     if (!token) { router.push('/'); return; }
     try {
-      setAddress(getZkLoginAddress(token));
+      // The real address is the Enoki-derived one stored during
+      // auth/callback (via setUserAddress) — not a local recompute, which
+      // used to hardcode the zkLogin salt to 0 and could show an address
+      // that didn't match the one actually signing.
+      setAddress(getUserAddress());
       const decoded = getDecodedJwt(token) as any;
       setUser({ name: decoded.name, email: decoded.email });
     } catch (e) { router.push('/'); }

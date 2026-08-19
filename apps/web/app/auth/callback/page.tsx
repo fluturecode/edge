@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { setUserAddress } from '@/lib/signer';
+import { generateZkProof } from '@/lib/zklogin';
 
 export default function Callback() {
   const router = useRouter();
@@ -39,7 +40,7 @@ export default function Callback() {
           const addressData = await addressRes.json();
           suiAddress = addressData.data?.address;
           userSalt = addressData.data?.salt || '0';
-          console.log('Enoki address:', suiAddress, 'salt:', userSalt);
+          console.log('Enoki address:', suiAddress);
         } else {
           // Fallback to local derivation with salt 0
           const { jwtToAddress } = await import('@mysten/sui/zklogin');
@@ -50,31 +51,12 @@ export default function Callback() {
         setUserAddress(suiAddress);
         localStorage.setItem('edge_user_salt', userSalt);
 
-        // Step 2: Generate ZK proof
-        const { Ed25519Keypair } = await import('@mysten/sui/keypairs/ed25519');
-        const keypair = Ed25519Keypair.fromSecretKey(ephemeralKey);
-        const ephemeralPublicKey = keypair.getPublicKey();
-
-        const proofRes = await fetch('/api/zkp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            network: 'mainnet',
-            ephemeralPublicKey: ephemeralPublicKey.toSuiPublicKey(),
-            maxEpoch,
-            randomness: randomness.toString(),
-            idToken,
-          }),
-        });
-
-        if (!proofRes.ok) {
-          const err = await proofRes.text();
-          throw new Error(`ZK prover failed: ${err}`);
-        }
-
-        const proofData = await proofRes.json();
-        localStorage.setItem('edge_zk_proof', JSON.stringify(proofData.data));
-        console.log('proof stored, addressSeed:', proofData.data?.addressSeed?.slice(0, 20));
+        // Step 2: Generate ZK proof — via the shared helper so this stays in
+        // sync with SUI_NETWORK. This used to duplicate the /api/zkp call
+        // inline with a hardcoded `network: 'mainnet'`, independently of
+        // (and un-fixed by) lib/zklogin.ts's fix for the same bug.
+        const proof = await generateZkProof({ idToken, ephemeralKey, randomness, maxEpoch, userAddress: suiAddress });
+        localStorage.setItem('edge_zk_proof', JSON.stringify(proof));
 
       } catch (e) {
         console.error('auth failed:', e);

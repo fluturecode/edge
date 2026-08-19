@@ -1,6 +1,7 @@
 export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { guardRequest, MAX_PROMPT_LENGTH } from '@/lib/api-guard';
 
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
@@ -74,7 +75,16 @@ function parseDecisions(text: string): any[] {
 
 export async function POST(req: NextRequest) {
   try {
+    const guardResponse = guardRequest(req);
+    if (guardResponse) return guardResponse;
+
     const { system, message, model = 'claude-sonnet-4-6', stream = false } = await req.json();
+    if (typeof system !== 'string' || typeof message !== 'string') {
+      return NextResponse.json({ error: 'Missing system or message' }, { status: 400 });
+    }
+    if (system.length > MAX_PROMPT_LENGTH || message.length > MAX_PROMPT_LENGTH) {
+      return NextResponse.json({ error: 'Prompt too long' }, { status: 400 });
+    }
     const isGemini = GEMINI_MODELS.includes(model);
 
     // Non-streaming path

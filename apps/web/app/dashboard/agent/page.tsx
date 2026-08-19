@@ -274,10 +274,12 @@ function EscalationModal({ step, onApprove, onReject }: {
   );
 }
 
-// ── Fireblocks mock helper ────────────────────────────────────────────────────
-// Generates a realistic simulated Fireblocks sandbox transaction ID and note
-// In production: replace with real Fireblocks SDK call
-function mockFireblocksSettlement(merchant: string, amount: number, edgeDigest: string) {
+// ── Simulated Fireblocks settlement ────────────────────────────────────────
+// Math.random()-generated ID, no network call, no real Fireblocks
+// integration — every field here is fabricated client-side. Rendered as
+// SIMULATED in the card itself (not a footnote) so it can't read as a real
+// settlement. In production: replace with a real Fireblocks SDK call.
+function simulatedFireblocksSettlement(merchant: string, amount: number, edgeDigest: string) {
   const chars = 'abcdef0123456789';
   const txId = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
     '-' + Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('') +
@@ -288,8 +290,8 @@ function mockFireblocksSettlement(merchant: string, amount: number, edgeDigest: 
     assetId: 'USDC_BASE',
     amount: amount.toFixed(2),
     network: 'Base',
-    note: `Edge approved: ${edgeDigest}`,
-    status: 'SUBMITTED',
+    note: `Simulated — Edge approved: ${edgeDigest}`,
+    status: 'SIMULATED',
   };
 }
 
@@ -441,7 +443,7 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
         if (outcome.status === 'approved') {
           currentSpent += step.amount; approvedCount++;
           setSpent(currentSpent); setTxCount(approvedCount);
-          const fbSettlement = mockFireblocksSettlement(step.merchant, step.amount, outcome.digest);
+          const fbSettlement = simulatedFireblocksSettlement(step.merchant, step.amount, outcome.digest);
           addMessage({ type: 'outcome', text: 'Transaction approved and recorded on-chain', merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest, fireblocksSettlement: fbSettlement });
           outcomesRef.current.push({ passId, merchant: step.merchant, amount: step.amount, status: 'approved', timestamp: Date.now(), owner, digest: outcome.digest });
           outcomeItemsRef.current.push({ merchant: step.merchant, amount: step.amount, status: 'approved', digest: outcome.digest });
@@ -562,17 +564,21 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
     addMessage({ type: 'system', text: `${modelInfo.label} ready · ${decisions.length} decisions · executing...` });
 
     // Process all decisions
-    let escalationFired = false;
-    const originalSetEscalation = setEscalationPending;
-
     for (const decision of decisions) {
       if (stopRef.current) break;
       await processDecision(decision);
     }
 
     // If no escalation fired (AI generated amounts all under threshold),
-    // inject a guaranteed escalation at the end
-    if (!escalationFired && !stopRef.current && outcomes.length === 0) {
+    // inject a guaranteed escalation at the end. Was `!escalationFired` — a
+    // flag declared but never reassigned anywhere, and `outcomes.length`,
+    // React state that's still `[]` here regardless of what just ran
+    // (setOutcomes only fires later, after this block). Net effect: this
+    // fired on every single run, appending an unwanted duplicate
+    // escalation on top of the one the system prompt already forces the
+    // LLM to produce. Check the actual accumulated outcomes instead.
+    const alreadyEscalated = outcomeItemsRef.current.some(o => o.status === 'escalated');
+    if (!alreadyEscalated && !stopRef.current) {
       const guaranteedEscalation: AgentDecision = scenario === 'festival'
         ? { thinking: 'Stage Access VIP at $220 exceeds my $150 escalation threshold — flagging for human approval.', merchant: 'Stage Access VIP', amount: 220.00, reasoning: 'VIP upgrade exceeds escalation threshold — routing to human.' }
         : { thinking: 'Large Cetus position at $2,500 exceeds my $2,000 escalation threshold — flagging for human review.', merchant: 'Cetus', amount: 2500.00, reasoning: 'Large swap exceeds escalation threshold — human approval required.' };
@@ -776,13 +782,13 @@ Required: 3-4 auto-approved under $${AUTO_THRESHOLD}. One attempt at ${config.me
                         )}
                       </div>
                     </div>
-                    {/* Fireblocks settlement — Base + USDC */}
+                    {/* Simulated Fireblocks settlement — fabricated client-side, no real Fireblocks call. "SIMULATED" is part of the card itself, not a footnote. */}
                     {msg.fireblocksSettlement && (
                       <div style={{ background: 'rgba(255,140,0,0.06)', border: '1px solid rgba(255,140,0,0.25)', borderRadius: 8, padding: '10px 12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                              <div style={{ fontSize: 10, color: '#FF8C00', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>FIREBLOCKS SETTLEMENT</div>
+                              <div style={{ fontSize: 10, color: '#FF8C00', fontFamily: 'DM Mono, monospace', letterSpacing: '0.06em' }}>SIMULATED FIREBLOCKS SETTLEMENT</div>
                               <div style={{ fontSize: 9, color: '#FF8C00', fontFamily: 'DM Mono, monospace', background: 'rgba(255,140,0,0.15)', padding: '1px 5px', borderRadius: 3 }}>{msg.fireblocksSettlement.status}</div>
                             </div>
                             <div style={{ fontSize: 12, color: T.grey1, fontFamily: 'Inter, sans-serif', marginBottom: 4 }}>

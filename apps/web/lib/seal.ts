@@ -16,8 +16,10 @@ export async function encryptPolicy(
   policy: EdgePassPolicy
 ): Promise<string | null> {
   try {
-    // Serialize policy to JSON string
-    // Full Seal encryption wired after key server deployment (Phase 3)
+    // Serializes to plaintext JSON — no encryption happens here despite the
+    // function name. Real Seal encryption is not implemented yet; it's
+    // pending key server deployment (Phase 3), at which point this should
+    // actually encrypt before returning.
     const data = JSON.stringify(policy);
     console.log('✓ Policy serialized for Seal:', policy.passId);
     return data;

@@ -3,7 +3,8 @@
 // Writes require a funded wallet — handled server-side post-contract deploy
 
 const WALRUS_AGGREGATOR = 'https://walrus-mainnet.brightlystake.com';
-const WALRUS_PUBLISHER = 'https://walrus-mainnet-publisher-1.staketab.org:443';
+// Writes go through /api/walrus, which has its own publisher list
+// (app/api/walrus/route.ts) — this module only reads.
 
 export interface AuditLogEntry {
   passId: string;

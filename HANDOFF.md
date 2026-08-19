@@ -170,7 +170,7 @@ Note: `expiry_ms` does NOT exist on-chain in either version. SDK calculates: `ex
 - Walrus writes — `apps/web/app/api/walrus/route.ts` writes to real public mainnet publishers (`walrus-mainnet-publisher.nami.cloud`, `staketab.org`) first; only falls back to a `local-{timestamp}` mock blob ID if every publisher is unreachable. The SDK also ships its own `WalrusAudit` class for direct mainnet writes/reads (`packages/sdk/src/audit/WalrusAudit.ts`) — the app doesn't use it yet, it still goes through its own `lib/walrus.ts` + `/api/walrus` proxy
 
 **Mocked:**
-- Seal network storage — still console-only, pending key server deployment (unrelated to the v2 upgrade, this was never blocked on `@mysten/sui`)
+- Seal encryption and network storage — `lib/seal.ts` only `JSON.stringify`s the policy today; there is no encryption step at all, not just no network storage. Both are still console-only, pending key server deployment (unrelated to the v2 upgrade, this was never blocked on `@mysten/sui`)
 
 **Worth knowing, not mocked:** `apps/web` never sets `onChainDenials` in its `new EdgePass({...})` calls, so the SDK's default (`true`) applies — `blocked` outcomes from the agent demo are already being recorded on-chain as aborted transactions, not just decided client-side. If a future demo wants to show *unverifiable* client-side-only blocking for contrast, that now needs an explicit `onChainDenials: false`.
 
@@ -228,7 +228,7 @@ apps/web/app/dashboard/create/page.tsx   — EdgePass creation
 apps/web/app/dashboard/agent/page.tsx    — AI agent demo
 apps/web/lib/signer.ts                   — zkLogin signer, gas coin resolution
 apps/web/lib/walrus.ts                   — Walrus HTTP API (real publishers, mock fallback)
-apps/web/lib/seal.ts                     — Seal policy encryption
+apps/web/lib/seal.ts                     — Seal policy serialization (plaintext — not yet encrypted)
 apps/web/app/api/sign/route.ts           — transaction signing
 apps/web/app/api/walrus/route.ts         — Walrus write proxy (real publishers, mock fallback)
 apps/web/app/api/zkp/route.ts            — ZK proof via Enoki

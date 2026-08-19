@@ -416,7 +416,7 @@ edge/
 │   │   ├── signer.ts                zkLogin signer, gas coin resolution
 │   │   ├── zklogin.ts               ZK proof generation via Enoki
 │   │   ├── walrus.ts                Walrus HTTP API (write/read blobs)
-│   │   └── seal.ts                  Seal policy encryption
+│   │   └── seal.ts                  Seal policy serialization — not yet encrypted, see Roadmap
 │   └── app/api/
 │       ├── sign/route.ts            Transaction signing + Sui execution
 │       ├── zkp/route.ts             ZK proof generation via Enoki
@@ -464,7 +464,7 @@ edge/
 - ✅ withPolicy() — wrap any AI tool with on-chain enforcement in one line
 - ✅ React hooks — `useEdgePass`, `useBudgetStatus`, `useSimulate`
 - ✅ 🤖 Live AI agent demo — Claude + Gemini, real autonomous decisions
-- ✅ 🔒 Seal policy serialization — encryption wired, network storage pending key server deployment
+- ✅ Seal policy serialization — `lib/seal.ts` turns the policy into a JSON string today; it is **plaintext, not encrypted**. Real Seal encryption and network storage are both still pending key server deployment
 - ✅ Move contract — deployed to Sui mainnet
 - ✅ SDK on npm — @edge-protocol/sdk
 

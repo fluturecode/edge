@@ -1,5 +1,21 @@
 name: Deploy Move Contract
 
+# ── About the hardcoded address below ──────────────────────────────────────
+#
+# 0xe759eaf1a47566836f825b96a8d12e55b858df1be7d86b032f449638a93489c9 is the
+# project's Sui deployer address (matches "Deployer address" in HANDOFF.md's
+# "Identity & Addresses" section) — the address the imported
+# secrets.SUI_PRIVATE_KEY corresponds to, switched to explicitly after
+# import so the publish step definitely runs as this address and not
+# whatever the runner's keystore defaulted to.
+#
+# This workflow can publish to mainnet: `network` defaults to testnet but
+# is a workflow_dispatch choice that includes mainnet, and there is no
+# separate approval gate or environment protection rule on this job — only
+# GitHub's own workflow_dispatch permission (repo write access) stands
+# between "I clicked Run workflow" and a real mainnet publish signed by
+# this key.
+#
 on:
   workflow_dispatch:
     inputs:
