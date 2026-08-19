@@ -1,9 +1,15 @@
 export const MIST_PER_SUI = BigInt(1_000_000_000);
 
+// grpc-web baseUrls (JSON-RPC on these same public fullnodes now returns
+// "deprecated, migrate to gRPC or GraphQL" for every method, on both
+// mainnet and testnet — confirmed by direct RPC probe, not just the SDK).
+// These public fullnodes are rate-limited and meant for development/public-good
+// access per Sui's own docs — point production traffic at a dedicated gRPC or
+// GraphQL provider instead of these before relying on this for real load.
 export const NETWORK_URLS: Record<string, string> = {
-  mainnet: 'https://fullnode.mainnet.sui.io',
-  testnet: 'https://fullnode.testnet.sui.io',
-  devnet:  'https://fullnode.devnet.sui.io',
+  mainnet: 'https://fullnode.mainnet.sui.io:443',
+  testnet: 'https://fullnode.testnet.sui.io:443',
+  devnet:  'https://fullnode.devnet.sui.io:443',
 };
 
 // v1 and v2 are separate package deployments — `create_pass`/`execute_transaction`

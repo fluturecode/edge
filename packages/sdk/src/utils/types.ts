@@ -56,6 +56,16 @@ export interface EdgePassObjectV1 {
 export interface EdgePassObjectV2 {
   version: 'v2';
   id: string;
+  /**
+   * The version at which this shared object was created (`transfer::share_object`
+   * time) — part of a shared object's identity, fixed for its whole lifetime,
+   * unlike `version` below which changes on every mutation. Required to build
+   * a `tx.sharedObjectRef()` reference; parsed once in `ExecutionEngine.fetchPass()`
+   * from the object's owner metadata. Every call site that takes the pass by
+   * reference (execute, revoke) needs this instead of `tx.object(pass.id)` —
+   * see HANDOFF.md ("Critical Architecture Notes") for why.
+   */
+  initialSharedVersion: string;
   /** Grants and revokes. May not spend. */
   issuer: string;
   /** Spends. May not revoke, may not change anything. */

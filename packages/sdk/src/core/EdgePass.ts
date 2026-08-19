@@ -1,4 +1,4 @@
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { toBase64 } from "@mysten/sui/utils";
 import {
@@ -41,7 +41,11 @@ type EventListener<T extends EdgePassEventType> = (
 // ── EdgePass class ────────────────────────────────────────────────────────────
 
 export class EdgePass {
-  private client: SuiJsonRpcClient;
+  // Currently unused elsewhere in this class — create()/execute()/revoke() all
+  // delegate actual chain access to the caller-supplied signer or to
+  // ExecutionEngine's own client. Kept (and migrated off JSON-RPC along with
+  // the rest) rather than removed, in case a future method needs it.
+  private client: SuiGrpcClient;
   private engine: ExecutionEngine;
   private config: EdgeSDKConfig;
   // eslint-disable-next-line @typescript-eslint/ban-types
@@ -49,9 +53,9 @@ export class EdgePass {
 
   constructor(config: EdgeSDKConfig) {
     this.config = config;
-    this.client = new SuiJsonRpcClient({
-      url: NETWORK_URLS[config.network],
+    this.client = new SuiGrpcClient({
       network: config.network as 'mainnet' | 'testnet' | 'devnet',
+      baseUrl: NETWORK_URLS[config.network],
     });
     this.engine = new ExecutionEngine(config.network, config.onChainDenials ?? true);
   }
@@ -257,31 +261,42 @@ export class EdgePass {
 
     // Prefer refetching the real on-chain object — it's the only reliable
     // source for `issuer` (the tx sender, which the SDK never sends as an
-    // argument). Fall back to a locally-constructed approximation if the
-    // object ID wasn't returned or the refetch fails.
+    // argument) and for `initialSharedVersion` (only knowable once the
+    // object actually exists on chain). Fall back to a locally-constructed
+    // approximation if the object ID wasn't returned or the refetch fails.
     if (result.objectId) {
+      // The object was just created in this exact transaction — tell the
+      // engine so the fetch() below waits for read-after-write consistency
+      // instead of racing a fullnode that hasn't applied the write yet.
+      this.engine.registerWrite(result.objectId, result.digest);
       const fetched = await this.fetch(result.objectId);
       if (fetched && fetched.version === 'v2') return fetched;
     }
 
+    // No objectId (or the refetch above failed) — approximate locally.
+    // initialSharedVersion isn't knowable without a real chain read, so this
+    // approximation is unusable with execute()/revoke() until the caller
+    // fetches the real object; buildPTB() throws a clear error rather than
+    // silently building a broken tx if that's attempted first.
     const now = Date.now();
     return {
-      version:           'v2',
-      id:                result.objectId || result.digest,
-      issuer:            passConfig.issuer ?? '',
-      agent:             passConfig.agent,
-      budget:            passConfig.budget,
-      escalateAbove:     passConfig.escalateAbove,
-      maxPerTransaction: passConfig.maxPerTransaction,
-      velocityCap:       passConfig.velocityCap,
-      velocityUsed:      0,
-      windowMs:          passConfig.velocityWindowMs,
-      windowStartMs:     now,
-      approvedMerchants: passConfig.approvedMerchants,
-      spent:             BigInt(0),
-      active:            true,
-      createdAt:         now,
-      expiresAt:         now + passConfig.expiryMs,
+      version:              'v2',
+      id:                   result.objectId || result.digest,
+      initialSharedVersion: '',
+      issuer:               passConfig.issuer ?? '',
+      agent:                passConfig.agent,
+      budget:               passConfig.budget,
+      escalateAbove:        passConfig.escalateAbove,
+      maxPerTransaction:    passConfig.maxPerTransaction,
+      velocityCap:          passConfig.velocityCap,
+      velocityUsed:         0,
+      windowMs:             passConfig.velocityWindowMs,
+      windowStartMs:        now,
+      approvedMerchants:    passConfig.approvedMerchants,
+      spent:                BigInt(0),
+      active:               true,
+      createdAt:            now,
+      expiresAt:            now + passConfig.expiryMs,
     };
   }
 
@@ -358,11 +373,24 @@ export class EdgePass {
           `edge_pass_v2 has not been deployed there yet.`
         );
       }
-      // v2's revoke_pass takes a Clock — v1's does not.
+      if (!pass.initialSharedVersion) {
+        throw new Error(
+          `EdgePass.revoke: pass ${pass.id} is missing initialSharedVersion — re-fetch it via ` +
+          `sdk.fetch() before calling revoke().`
+        );
+      }
+      // v2's revoke_pass takes a Clock — v1's does not. edge_pass_v2 is a
+      // shared object, so it's referenced with sharedObjectRef (not
+      // tx.object()) for the same reason as execute() — see ExecutionEngine
+      // and HANDOFF.md.
       tx.moveCall({
         target: `${packageId}::edge_pass_v2::revoke_pass`,
         arguments: [
-          tx.object(pass.id),
+          tx.sharedObjectRef({
+            objectId:             pass.id,
+            initialSharedVersion: pass.initialSharedVersion,
+            mutable:              true,
+          }),
           tx.sharedObjectRef({
             objectId:             SUI_CLOCK_OBJECT_ID,
             initialSharedVersion: 1,
@@ -377,12 +405,20 @@ export class EdgePass {
           `EdgePass.revoke: no v1 package ID configured for network "${this.config.network}".`
         );
       }
+      // v1 passes are OWNED objects (transfer::transfer to `owner`), not
+      // shared — there's no initialSharedVersion for an owned object, and
+      // tx.object() is the correct (and only) way to reference one here.
       tx.moveCall({
         target:    `${packageId}::edge_pass::revoke_pass`,
         arguments: [tx.object(pass.id)],
       });
     }
 
-    return signer.signAndExecute(tx);
+    const result = await signer.signAndExecute(tx);
+    // Same read-after-write hazard as execute()/create() — a subsequent
+    // sdk.fetch(pass.id) (e.g. to confirm `active: false`) shouldn't race
+    // the fullnode.
+    this.engine.registerWrite(pass.id, result.digest);
+    return result;
   }
 }

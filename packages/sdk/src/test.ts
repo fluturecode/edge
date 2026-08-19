@@ -51,6 +51,7 @@ const STAGE   = '0x3';
 const mockPass: EdgePassObjectV2 = {
   version:           'v2',
   id:                '0x123',
+  initialSharedVersion: '1',
   issuer:             '0xabc',
   agent:              '0xagent',
   budget:            BigInt(300) * MIST_PER_SUI,
